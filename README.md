@@ -1,12 +1,34 @@
 # driftcheck
 
+[![CI](https://github.com/sxuff/driftcheck/actions/workflows/ci.yml/badge.svg)](https://github.com/sxuff/driftcheck/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Node.js >=18.18](https://img.shields.io/badge/node-%3E%3D18.18-339933.svg)](package.json)
+[![TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178C6.svg)](https://www.typescriptlang.org/)
+
 `driftcheck` is a local-first semantic linter for AI-generated code. It analyzes staged changes or a git diff and flags when new code drifts away from the existing codebase.
 
 Today it detects duplicated abstractions, undeclared dependency drift, and nearby convention drift. Longer term, it aims to catch architecture violations from repo docs, ADRs, and import boundaries.
 
 The MVP is local-first and focused on TypeScript/JavaScript, Python, and Rust repositories.
 
-## Install
+![driftcheck CLI demo](docs/demo.svg)
+
+## Why
+
+AI agents are fast at producing code, but they often miss the quiet social contract of a codebase: existing utilities, naming habits, dependency choices, test style, and folder conventions.
+
+`driftcheck` looks at the code that is already there, then reviews your changed files for drift before those changes become permanent.
+
+## Features
+
+- Detects new functions/classes/types that resemble existing abstractions.
+- Flags undeclared external dependencies introduced by changed files.
+- Learns nearby conventions for quotes, semicolons, exports, function style, error handling, and test/source placement.
+- Works locally on real git diffs and staged changes.
+- Supports text output for humans and JSON output for CI.
+- Starts with JavaScript/TypeScript, Python, and Rust.
+
+## Quick Start
 
 ```bash
 npm install
@@ -33,7 +55,7 @@ You can also run the compiled CLI directly:
 node dist/cli.js diff
 ```
 
-## Commands
+## Usage
 
 Analyze unstaged working tree changes:
 
@@ -94,12 +116,13 @@ Language support is intentionally isolated so Python and Rust analyzers can be a
 
 ## Roadmap
 
+- Configuration file for thresholds and ignored rules.
 - Better semantic similarity using embeddings or local symbol graphs.
-- Configurable rule thresholds.
 - Framework-aware conventions for React, Next.js, Node services, and test runners.
 - Tree-sitter-backed analyzers for richer multi-language parsing.
 - Architecture rules from project docs, ADRs, and import boundaries.
 - CI annotations for GitHub Actions.
+- npm publishing with GitHub Actions trusted publishing.
 
 ## Development
 

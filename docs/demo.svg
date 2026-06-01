@@ -1,0 +1,21 @@
+<svg width="920" height="420" viewBox="0 0 920 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">driftcheck CLI demo</title>
+  <desc id="desc">A terminal-style preview of driftcheck reporting duplicate abstraction and dependency drift findings.</desc>
+  <rect width="920" height="420" rx="16" fill="#0B1020"/>
+  <rect x="0.5" y="0.5" width="919" height="419" rx="15.5" stroke="#26324D"/>
+  <circle cx="32" cy="31" r="7" fill="#FF5F57"/>
+  <circle cx="56" cy="31" r="7" fill="#FFBD2E"/>
+  <circle cx="80" cy="31" r="7" fill="#28C840"/>
+  <text x="118" y="36" fill="#9AA7C7" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">driftcheck diff</text>
+  <line x1="0" y1="58" x2="920" y2="58" stroke="#26324D"/>
+  <text x="32" y="94" fill="#7DD3FC" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">$ driftcheck diff</text>
+  <text x="32" y="132" fill="#E5E7EB" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">driftcheck found 2 findings:</text>
+  <rect x="32" y="158" width="856" height="92" rx="8" fill="#121A2E" stroke="#26324D"/>
+  <text x="54" y="190" fill="#FBBF24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">[warning] New external dependency: slugify</text>
+  <text x="54" y="218" fill="#CBD5E1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">src/features/slug.ts:1</text>
+  <text x="54" y="238" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Not currently used by tracked source files or listed in a dependency manifest.</text>
+  <rect x="32" y="270" width="856" height="104" rx="8" fill="#121A2E" stroke="#26324D"/>
+  <text x="54" y="302" fill="#FBBF24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">[warning] New function resembles formatDateForDisplay</text>
+  <text x="54" y="330" fill="#CBD5E1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">src/features/invoice.ts:3</text>
+  <text x="54" y="350" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Similarity score: 0.77. Reuse or extend the existing abstraction if it owns this behavior.</text>
+</svg>
