@@ -116,6 +116,8 @@ Language support is intentionally isolated so Python and Rust analyzers can be a
 
 ## Roadmap
 
+See [ROADMAP.md](ROADMAP.md) for goal-sized build loops and copyable `/goal` prompts.
+
 - Configuration file for thresholds and ignored rules.
 - Better semantic similarity using embeddings or local symbol graphs.
 - Framework-aware conventions for React, Next.js, Node services, and test runners.
