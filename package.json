@@ -16,6 +16,8 @@
   },
   "files": [
     "dist",
+    "docs",
+    "examples",
     "README.md",
     "LICENSE"
   ],
@@ -26,7 +28,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "prepack": "npm run check"
   },
   "keywords": [
     "ai",

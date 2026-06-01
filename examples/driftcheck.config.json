@@ -1,0 +1,18 @@
+{
+  "ignorePaths": ["dist/**", "coverage/**", "fixtures/generated/**"],
+  "languages": ["javascript", "typescript", "python", "rust"],
+  "rules": {
+    "DC001": {
+      "enabled": true,
+      "threshold": 0.62
+    },
+    "DC002": {
+      "enabled": true,
+      "severity": "warning"
+    },
+    "DC003": {
+      "enabled": true,
+      "severity": "info"
+    }
+  }
+}

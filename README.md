@@ -41,6 +41,12 @@ During development:
 npm run dev -- diff
 ```
 
+Run from npm once published:
+
+```bash
+npx driftcheck diff
+```
+
 To use the `driftcheck` binary name locally before publishing:
 
 ```bash
@@ -78,7 +84,27 @@ driftcheck scan
 Emit JSON for CI experiments:
 
 ```bash
-driftcheck staged --json
+driftcheck staged --format json
+```
+
+Emit GitHub Actions annotations:
+
+```bash
+driftcheck staged --format github --fail-on warning
+```
+
+Filter low-severity findings:
+
+```bash
+driftcheck diff --quiet
+driftcheck diff --severity warning
+```
+
+Use a custom config file:
+
+```bash
+driftcheck diff --config examples/driftcheck.config.json
+driftcheck diff --no-config
 ```
 
 ## What It Checks
@@ -88,6 +114,54 @@ driftcheck staged --json
 - **Convention drift**: changed files are compared with nearby files for quote style, semicolons, export style, function style, error handling, and basic source/test placement.
 
 Findings include severity, path, line number when possible, explanation, and a suggested fix.
+
+## Configuration
+
+driftcheck looks for `driftcheck.config.json` at the repo root. Use `--config <path>` for a custom path, or `--no-config` to use defaults only.
+
+```json
+{
+  "ignorePaths": ["dist/**", "coverage/**"],
+  "languages": ["javascript", "typescript", "python", "rust"],
+  "rules": {
+    "DC001": {
+      "enabled": true,
+      "threshold": 0.62,
+      "severity": "warning"
+    },
+    "DC002": {
+      "enabled": true,
+      "severity": "warning"
+    },
+    "DC003": {
+      "enabled": true,
+      "severity": "info"
+    }
+  }
+}
+```
+
+Config fields:
+
+- `ignorePaths`: glob-style paths to skip.
+- `languages`: enabled analyzers.
+- `rules.<code>.enabled`: turn a rule on or off.
+- `rules.<code>.severity`: override emitted severity.
+- `rules.DC001.threshold`: similarity threshold from `0` to `1`.
+
+## Rules
+
+### DC001 Similar Declaration
+
+Flags new functions/classes/types that look similar to existing declarations.
+
+### DC002 New Dependency
+
+Flags new external imports that are not already used and not declared in a dependency manifest.
+
+### DC003 Convention Drift
+
+Flags changed files that differ from nearby quote, semicolon, export, function, error-handling, or source/test placement patterns.
 
 ## Example
 
@@ -118,13 +192,34 @@ Language support is intentionally isolated so Python and Rust analyzers can be a
 
 See [ROADMAP.md](ROADMAP.md) for goal-sized build loops and copyable `/goal` prompts.
 
-- Configuration file for thresholds and ignored rules.
 - Better semantic similarity using embeddings or local symbol graphs.
 - Framework-aware conventions for React, Next.js, Node services, and test runners.
 - Tree-sitter-backed analyzers for richer multi-language parsing.
 - Architecture rules from project docs, ADRs, and import boundaries.
-- CI annotations for GitHub Actions.
 - npm publishing with GitHub Actions trusted publishing.
+
+## GitHub Actions
+
+```yaml
+name: Driftcheck
+
+on:
+  pull_request:
+
+jobs:
+  driftcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx driftcheck staged --format github --fail-on warning
+```
 
 ## Development
 

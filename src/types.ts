@@ -1,11 +1,16 @@
 export type Severity = "info" | "warning" | "error";
 
+export type Language = "javascript" | "typescript" | "python" | "rust";
+
 export type FindingKind =
   | "similar-declaration"
   | "new-dependency"
   | "convention-drift";
 
+export type RuleCode = "DC001" | "DC002" | "DC003";
+
 export interface Finding {
+  code: RuleCode;
   kind: FindingKind;
   severity: Severity;
   filePath: string;
@@ -13,6 +18,7 @@ export interface Finding {
   title: string;
   message: string;
   suggestion: string;
+  docsUrl?: string;
 }
 
 export interface DeclarationInfo {
@@ -35,7 +41,7 @@ export interface ImportInfo {
 
 export interface FileAnalysis {
   filePath: string;
-  language: "javascript" | "typescript" | "python" | "rust";
+  language: Language;
   declarations: DeclarationInfo[];
   imports: ImportInfo[];
   conventions: FileConventions;
@@ -63,8 +69,31 @@ export interface ChangedFile {
 export interface AnalyzeOptions {
   cwd: string;
   mode: "diff" | "staged";
+  config?: DriftcheckConfig;
+  configPath?: string;
+  noConfig?: boolean;
 }
 
 export interface AnalyzeResult {
   findings: Finding[];
 }
+
+export interface RuleConfig {
+  enabled?: boolean;
+  severity?: Severity;
+  threshold?: number;
+}
+
+export interface DriftcheckConfig {
+  ignorePaths: string[];
+  languages: Language[];
+  rules: Record<RuleCode, RuleConfig>;
+}
+
+export interface DriftcheckConfigInput {
+  ignorePaths?: string[];
+  languages?: Language[];
+  rules?: Partial<Record<RuleCode, RuleConfig>>;
+}
+
+export type OutputFormat = "text" | "json" | "github";

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { Language } from "./types.js";
 
 export const supportedExtensions = new Set([
   ".js",
@@ -35,9 +36,7 @@ export function isExternalImport(source: string): boolean {
   );
 }
 
-export function sourceLanguage(
-  filePath: string,
-): "javascript" | "typescript" | "python" | "rust" | undefined {
+export function sourceLanguage(filePath: string): Language | undefined {
   const extension = path.extname(filePath);
   if (extension === ".py") return "python";
   if (extension === ".rs") return "rust";

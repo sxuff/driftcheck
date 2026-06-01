@@ -1,6 +1,11 @@
 import path from "node:path";
 import { analyzeSourceFile } from "./analyzers/index.js";
-import { isSupportedSourceFile, readTextFile } from "./files.js";
+import { loadConfig, ruleDocs, shouldIgnorePath } from "./config.js";
+import {
+  isSupportedSourceFile,
+  readTextFile,
+  sourceLanguage,
+} from "./files.js";
 import { getChangedFiles, readHeadFile, repoRoot } from "./git.js";
 import { scanRepo } from "./scan.js";
 import type {
@@ -18,8 +23,15 @@ export async function analyzeChanges(
   options: AnalyzeOptions,
 ): Promise<AnalyzeResult> {
   const root = await repoRoot(options.cwd);
+  const config =
+    options.config ??
+    (await loadConfig({
+      cwd: root,
+      configPath: options.configPath,
+      noConfig: options.noConfig,
+    }));
   const [repoMap, changedFiles] = await Promise.all([
-    scanRepo(root),
+    scanRepo(root, config),
     getChangedFiles(root, options.mode),
   ]);
 
@@ -31,6 +43,9 @@ export async function analyzeChanges(
 
   for (const changedFile of changedFiles) {
     if (!isSupportedSourceFile(changedFile.filePath)) continue;
+    if (shouldIgnorePath(changedFile.filePath, config.ignorePaths)) continue;
+    const language = sourceLanguage(changedFile.filePath);
+    if (!language || !config.languages.includes(language)) continue;
     const currentText = await readTextFile(root, changedFile.filePath);
     if (currentText === undefined) continue;
     const current = analyzeSourceFile(changedFile.filePath, currentText);
@@ -47,12 +62,12 @@ export async function analyzeChanges(
   }
 
   const findings = [
-    ...findSimilarDeclarations(repoMap, changedAnalyses),
-    ...findNewDependencies(repoMap, changedAnalyses),
-    ...findConventionDrift(repoMap, changedAnalyses),
+    ...findSimilarDeclarations(repoMap, changedAnalyses, config),
+    ...findNewDependencies(repoMap, changedAnalyses, config),
+    ...findConventionDrift(repoMap, changedAnalyses, config),
   ];
 
-  return { findings: sortFindings(findings) };
+  return { findings: dedupeFindings(sortFindings(findings)) };
 }
 
 function findSimilarDeclarations(
@@ -62,7 +77,11 @@ function findSimilarDeclarations(
     current: FileAnalysis;
     previous?: FileAnalysis;
   }>,
+  config: NonNullable<AnalyzeOptions["config"]>,
 ): Finding[] {
+  const rule = config.rules.DC001;
+  if (rule.enabled === false) return [];
+  const threshold = rule.threshold ?? 0.5;
   const findings: Finding[] = [];
   for (const { changedFile, current, previous } of changedAnalyses) {
     const previousKeys = new Set(
@@ -88,17 +107,20 @@ function findSimilarDeclarations(
         }))
         .sort((a, b) => b.score - a.score)[0];
 
-      if (!best || best.score < 0.5) continue;
+      if (!best || best.score < threshold) continue;
+      if (isSameHelperName(declaration.name, best.candidate.name)) continue;
 
       findings.push({
+        code: "DC001",
         kind: "similar-declaration",
-        severity: best.score >= 0.72 ? "warning" : "info",
+        severity: rule.severity ?? (best.score >= 0.72 ? "warning" : "info"),
         filePath: declaration.filePath,
         line: declaration.line,
         title: `New ${declaration.kind} resembles ${best.candidate.name}`,
         message: `${declaration.name} looks semantically similar to ${best.candidate.name} in ${best.candidate.filePath}:${best.candidate.line}. Similarity score: ${best.score.toFixed(2)}.`,
         suggestion:
-          "Reuse or extend the existing abstraction if it owns this behavior; otherwise rename or narrow the new code so the distinction is obvious.",
+          "Check whether the existing abstraction already owns this behavior. Reuse it, extend it, or rename the new code so the distinction is obvious.",
+        docsUrl: ruleDocs.DC001,
       });
     }
   }
@@ -113,7 +135,10 @@ function findNewDependencies(
     current: FileAnalysis;
     previous?: FileAnalysis;
   }>,
+  config: NonNullable<AnalyzeOptions["config"]>,
 ): Finding[] {
+  const rule = config.rules.DC002;
+  if (rule.enabled === false) return [];
   const changedFilePaths = new Set(
     changedAnalyses.map(({ changedFile }) => changedFile.filePath),
   );
@@ -156,14 +181,16 @@ function findNewDependencies(
       );
 
       findings.push({
+        code: "DC002",
         kind: "new-dependency",
-        severity: "warning",
+        severity: rule.severity ?? "warning",
         filePath: importInfo.filePath,
         line: importInfo.line,
         title: `New external dependency: ${name}`,
         message: `${name} is not currently used by tracked source files or listed in a dependency manifest.${overlappingTokens.length > 0 ? ` Local code already uses related terms: ${overlappingTokens.join(", ")}.` : ""}`,
         suggestion:
-          "Prefer an existing package or local abstraction when it already covers the job; add the dependency only when it clearly buys enough behavior.",
+          "Use an existing dependency or local abstraction if it already covers the job; otherwise add the package to the manifest with a clear reason.",
+        docsUrl: ruleDocs.DC002,
       });
     }
   }
@@ -178,7 +205,10 @@ function findConventionDrift(
     current: FileAnalysis;
     previous?: FileAnalysis;
   }>,
+  config: NonNullable<AnalyzeOptions["config"]>,
 ): Finding[] {
+  const rule = config.rules.DC003;
+  if (rule.enabled === false) return [];
   const findings: Finding[] = [];
 
   for (const { changedFile, current, previous } of changedAnalyses) {
@@ -204,6 +234,7 @@ function findConventionDrift(
       "quote style",
       current.conventions.quoteStyle,
       baseline.quoteStyle,
+      rule.severity ?? "info",
     );
     compareConvention(
       findings,
@@ -213,6 +244,7 @@ function findConventionDrift(
       "semicolon usage",
       current.conventions.semicolons,
       baseline.semicolons,
+      rule.severity ?? "info",
     );
     compareConvention(
       findings,
@@ -222,6 +254,7 @@ function findConventionDrift(
       "export style",
       current.conventions.exportStyle,
       baseline.exportStyle,
+      rule.severity ?? "info",
     );
     compareConvention(
       findings,
@@ -231,6 +264,7 @@ function findConventionDrift(
       "function style",
       current.conventions.functionStyle,
       baseline.functionStyle,
+      rule.severity ?? "info",
     );
     compareConvention(
       findings,
@@ -240,6 +274,7 @@ function findConventionDrift(
       "error handling",
       current.conventions.errorStyle,
       baseline.errorStyle,
+      rule.severity ?? "info",
     );
 
     const previousDeclarationCount = previous?.declarations.length ?? 0;
@@ -250,8 +285,9 @@ function findConventionDrift(
         isTestFile(current.filePath)
     ) {
       findings.push({
+        code: "DC003",
         kind: "convention-drift",
-        severity: "info",
+        severity: rule.severity ?? "info",
         filePath: current.filePath,
         line: Number.isFinite(line) ? line : undefined,
         title: "File placement may not match nearby test/source layout",
@@ -259,6 +295,7 @@ function findConventionDrift(
           "Nearby files suggest a different source-vs-test placement pattern for this folder.",
         suggestion:
           "Move the file beside matching source or test files, or keep it here only if this folder intentionally mixes those roles.",
+        docsUrl: ruleDocs.DC003,
       });
     }
   }
@@ -274,18 +311,21 @@ function compareConvention<T extends keyof FileConventions>(
   label: string,
   actual: FileConventions[T],
   expected: FileConventions[T],
+  severity: Finding["severity"],
 ): void {
   if (actual === undefined || expected === undefined) return;
   if (actual === expected || actual === "mixed" || expected === "mixed") return;
 
   findings.push({
+    code: "DC003",
     kind: "convention-drift",
-    severity: "info",
+    severity,
     filePath,
     line,
     title: `Convention drift: ${label}`,
     message: `This file uses ${String(actual)}, while nearby files mostly use ${String(expected)}.`,
     suggestion: `Match the nearby ${label} unless this file has a deliberate reason to differ.`,
+    docsUrl: ruleDocs.DC003,
   });
 }
 
@@ -322,6 +362,18 @@ function nearbyFiles(files: FileAnalysis[], filePath: string): FileAnalysis[] {
 
 function declarationKey(declaration: DeclarationInfo): string {
   return `${declaration.kind}:${declaration.name}:${declaration.line}`;
+}
+
+function isSameHelperName(left: string, right: string): boolean {
+  return normalizeName(left) === normalizeName(right);
+}
+
+function normalizeName(name: string): string {
+  return name
+    .replace(/^impl_/, "")
+    .replace(/_/g, "")
+    .replace(/([a-z])([A-Z])/g, "$1$2")
+    .toLowerCase();
 }
 
 function jaccard(left: string[], right: string[]): number {
@@ -361,4 +413,20 @@ function sortFindings(findings: Finding[]): Finding[] {
       a.filePath.localeCompare(b.filePath) ||
       (a.line ?? 0) - (b.line ?? 0),
   );
+}
+
+function dedupeFindings(findings: Finding[]): Finding[] {
+  const seen = new Set<string>();
+  return findings.filter((finding) => {
+    const key = [
+      finding.code,
+      finding.filePath,
+      finding.line ?? "",
+      finding.title,
+      finding.message,
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

@@ -1,17 +1,29 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { analyzeSourceFile } from "./analyzers/index.js";
-import { isSupportedSourceFile, readTextFile } from "./files.js";
+import { loadConfig, shouldIgnorePath } from "./config.js";
+import {
+  isSupportedSourceFile,
+  readTextFile,
+  sourceLanguage,
+} from "./files.js";
 import { listTrackedFiles, repoRoot } from "./git.js";
-import type { FileAnalysis, RepoMap } from "./types.js";
+import type { DriftcheckConfig, FileAnalysis, RepoMap } from "./types.js";
 
-export async function scanRepo(cwd: string): Promise<RepoMap> {
+export async function scanRepo(
+  cwd: string,
+  config?: DriftcheckConfig,
+): Promise<RepoMap> {
   const root = await repoRoot(cwd);
+  const resolvedConfig = config ?? (await loadConfig({ cwd: root }));
   const trackedFiles = await listTrackedFiles(root);
   const files: FileAnalysis[] = [];
 
   for (const filePath of trackedFiles) {
     if (!isSupportedSourceFile(filePath)) continue;
+    if (shouldIgnorePath(filePath, resolvedConfig.ignorePaths)) continue;
+    const language = sourceLanguage(filePath);
+    if (!language || !resolvedConfig.languages.includes(language)) continue;
     if (filePath.includes("node_modules/") || filePath.includes("dist/"))
       continue;
 
