@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ChangedFile } from "./types.js";
+import type { ChangedFile } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,9 +54,7 @@ export async function getChangedFiles(
     const text = await readFile(path.join(cwd, filePath), "utf8");
     changedFiles.push({
       filePath,
-      addedLines: new Set(
-        text.split(/\r?\n/).map((_, index) => index + 1),
-      ),
+      addedLines: new Set(text.split(/\r?\n/).map((_, index) => index + 1)),
     });
   }
 

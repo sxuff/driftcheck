@@ -1,22 +1,13 @@
-import {
+import type {
   DeclarationInfo,
   FileAnalysis,
   FileConventions,
   ImportInfo,
 } from "../types.js";
 
-const rustStdCrates = new Set([
-  "alloc",
-  "core",
-  "std",
-  "test",
-]);
+const rustStdCrates = new Set(["alloc", "core", "std", "test"]);
 
-const rustKeywords = new Set([
-  "crate",
-  "self",
-  "super",
-]);
+const rustKeywords = new Set(["crate", "self", "super"]);
 
 export function analyzeRustFile(filePath: string, text: string): FileAnalysis {
   const declarations: DeclarationInfo[] = [];
@@ -53,7 +44,13 @@ export function analyzeRustFile(filePath: string, text: string): FileAnalysis {
       );
     if (typeMatch) {
       declarations.push({
-        ...declaration("type", typeMatch[1], filePath, lineNumber, textBlock(lines, index)),
+        ...declaration(
+          "type",
+          typeMatch[1],
+          filePath,
+          lineNumber,
+          textBlock(lines, index),
+        ),
         exported: /^pub\b/.test(trimmed),
       });
       continue;
@@ -65,7 +62,13 @@ export function analyzeRustFile(filePath: string, text: string): FileAnalysis {
       );
     if (implMatch) {
       declarations.push(
-        declaration("type", `impl_${lastPathPart(implMatch[1])}`, filePath, lineNumber, textBlock(lines, index)),
+        declaration(
+          "type",
+          `impl_${lastPathPart(implMatch[1])}`,
+          filePath,
+          lineNumber,
+          textBlock(lines, index),
+        ),
       );
       continue;
     }
@@ -106,7 +109,11 @@ function declaration(
   };
 }
 
-function importInfo(source: string, filePath: string, line: number): ImportInfo {
+function importInfo(
+  source: string,
+  filePath: string,
+  line: number,
+): ImportInfo {
   return {
     source,
     filePath,
@@ -121,7 +128,9 @@ function rustUseRoots(useText: string): string[] {
   const root = normalized.split("::")[0];
   if (root) roots.add(root.replace(/^\{/, ""));
 
-  for (const match of normalized.matchAll(/(?:^|,|\{)([A-Za-z_][A-Za-z0-9_]*)::/g)) {
+  for (const match of normalized.matchAll(
+    /(?:^|,|\{)([A-Za-z_][A-Za-z0-9_]*)::/g,
+  )) {
     roots.add(match[1]);
   }
 
@@ -181,5 +190,10 @@ function detectRustConventions(text: string): FileConventions {
 }
 
 function lastPathPart(value: string): string {
-  return value.split("::").at(-1)?.replace(/[^A-Za-z0-9_]/g, "") ?? value;
+  return (
+    value
+      .split("::")
+      .at(-1)
+      ?.replace(/[^A-Za-z0-9_]/g, "") ?? value
+  );
 }

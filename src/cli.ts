@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { analyzeChanges } from "./driftcheck.js";
-import { scanRepo } from "./scan.js";
 import { formatJson, formatText } from "./reporters.js";
+import { scanRepo } from "./scan.js";
 
 type Command = "diff" | "staged" | "scan";
 
@@ -86,7 +86,9 @@ async function main(argv: string[]): Promise<number> {
   });
 
   console.log(args.json ? formatJson(result) : formatText(result));
-  return result.findings.some((finding) => finding.severity === "error") ? 1 : 0;
+  return result.findings.some((finding) => finding.severity === "error")
+    ? 1
+    : 0;
 }
 
 main(process.argv.slice(2)).then(

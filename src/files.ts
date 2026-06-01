@@ -30,7 +30,9 @@ export async function readTextFile(
 }
 
 export function isExternalImport(source: string): boolean {
-  return !source.startsWith(".") && !source.startsWith("/") && !source.includes(":");
+  return (
+    !source.startsWith(".") && !source.startsWith("/") && !source.includes(":")
+  );
 }
 
 export function sourceLanguage(

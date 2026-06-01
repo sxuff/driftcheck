@@ -1,9 +1,9 @@
-import path from "node:path";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { analyzeSourceFile } from "./analyzers/index.js";
 import { isSupportedSourceFile, readTextFile } from "./files.js";
 import { listTrackedFiles, repoRoot } from "./git.js";
-import { analyzeSourceFile } from "./analyzers/index.js";
-import { FileAnalysis, RepoMap } from "./types.js";
+import type { FileAnalysis, RepoMap } from "./types.js";
 
 export async function scanRepo(cwd: string): Promise<RepoMap> {
   const root = await repoRoot(cwd);
@@ -12,7 +12,8 @@ export async function scanRepo(cwd: string): Promise<RepoMap> {
 
   for (const filePath of trackedFiles) {
     if (!isSupportedSourceFile(filePath)) continue;
-    if (filePath.includes("node_modules/") || filePath.includes("dist/")) continue;
+    if (filePath.includes("node_modules/") || filePath.includes("dist/"))
+      continue;
 
     const text = await readTextFile(root, filePath);
     if (text === undefined) continue;
@@ -53,14 +54,18 @@ export async function readPackageDependencies(
   }
 }
 
-async function readOtherManifestDependencies(root: string): Promise<Record<string, string>> {
+async function readOtherManifestDependencies(
+  root: string,
+): Promise<Record<string, string>> {
   return {
     ...(await readPythonDependencies(root)),
     ...(await readCargoDependencies(root)),
   };
 }
 
-async function readPythonDependencies(root: string): Promise<Record<string, string>> {
+async function readPythonDependencies(
+  root: string,
+): Promise<Record<string, string>> {
   return {
     ...(await readRequirements(root)),
     ...(await readPyproject(root)),
@@ -74,9 +79,11 @@ async function readRequirements(root: string): Promise<Record<string, string>> {
 
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("-")) continue;
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("-"))
+        continue;
       const match = /^([A-Za-z0-9_.-]+)\s*([<>=!~].*)?$/.exec(trimmed);
-      if (match) dependencies[normalizePythonPackageName(match[1])] = match[2] ?? "*";
+      if (match)
+        dependencies[normalizePythonPackageName(match[1])] = match[2] ?? "*";
     }
 
     return dependencies;
@@ -96,7 +103,9 @@ async function readPyproject(root: string): Promise<Record<string, string>> {
       for (const match of arrayText.matchAll(/["']([^"']+)["']/g)) {
         const spec = match[1];
         const name = /^([A-Za-z0-9_.-]+)/.exec(spec)?.[1];
-        if (name) dependencies[normalizePythonPackageName(name)] = spec.slice(name.length) || "*";
+        if (name)
+          dependencies[normalizePythonPackageName(name)] =
+            spec.slice(name.length) || "*";
       }
     }
 
@@ -110,7 +119,9 @@ function normalizePythonPackageName(name: string): string {
   return name.toLowerCase().replaceAll("_", "-");
 }
 
-async function readCargoDependencies(root: string): Promise<Record<string, string>> {
+async function readCargoDependencies(
+  root: string,
+): Promise<Record<string, string>> {
   try {
     const text = await readFile(path.join(root, "Cargo.toml"), "utf8");
     const dependencies: Record<string, string> = {};
@@ -122,13 +133,16 @@ async function readCargoDependencies(root: string): Promise<Record<string, strin
 
       const sectionMatch = /^\[([^\]]+)\]$/.exec(trimmed);
       if (sectionMatch) {
-        inDependencySection = /(^dependencies$|\.dependencies$)/.test(sectionMatch[1]);
+        inDependencySection = /(^dependencies$|\.dependencies$)/.test(
+          sectionMatch[1],
+        );
         continue;
       }
 
       if (!inDependencySection) continue;
       const match = /^([A-Za-z0-9_-]+)\s*=\s*(.+)$/.exec(trimmed);
       if (!match) continue;
+      dependencies[match[1]] = match[2].trim();
       dependencies[normalizeRustCrateName(match[1])] = match[2].trim();
     }
 

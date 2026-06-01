@@ -1,6 +1,8 @@
 # driftcheck
 
-`driftcheck` is a semantic linter for AI-generated code. It analyzes staged changes or a git diff and flags when new code drifts away from the existing codebase: duplicated abstractions, reinvented utilities, inconsistent conventions, unnecessary dependencies, misplaced files, and architecture violations.
+`driftcheck` is a local-first semantic linter for AI-generated code. It analyzes staged changes or a git diff and flags when new code drifts away from the existing codebase.
+
+Today it detects duplicated abstractions, undeclared dependency drift, and nearby convention drift. Longer term, it aims to catch architecture violations from repo docs, ADRs, and import boundaries.
 
 The MVP is local-first and focused on TypeScript/JavaScript, Python, and Rust repositories.
 
@@ -103,6 +105,8 @@ Language support is intentionally isolated so Python and Rust analyzers can be a
 
 ```bash
 npm test
+npm run typecheck
+npm run lint
 npm run build
 npm run check
 ```

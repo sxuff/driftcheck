@@ -3,7 +3,7 @@ import { analyzeSourceFile } from "./analyzers/index.js";
 import { isSupportedSourceFile, readTextFile } from "./files.js";
 import { getChangedFiles, readHeadFile, repoRoot } from "./git.js";
 import { scanRepo } from "./scan.js";
-import {
+import type {
   AnalyzeOptions,
   AnalyzeResult,
   ChangedFile,
@@ -11,7 +11,6 @@ import {
   FileAnalysis,
   FileConventions,
   Finding,
-  ImportInfo,
   RepoMap,
 } from "./types.js";
 
@@ -67,7 +66,9 @@ function findSimilarDeclarations(
   const findings: Finding[] = [];
   for (const { changedFile, current, previous } of changedAnalyses) {
     const previousKeys = new Set(
-      previous?.declarations.map((declaration) => declarationKey(declaration)) ?? [],
+      previous?.declarations.map((declaration) =>
+        declarationKey(declaration),
+      ) ?? [],
     );
     const existingDeclarations = repoMap.files
       .filter((file) => file.filePath !== changedFile.filePath)
@@ -113,9 +114,16 @@ function findNewDependencies(
     previous?: FileAnalysis;
   }>,
 ): Finding[] {
+  const changedFilePaths = new Set(
+    changedAnalyses.map(({ changedFile }) => changedFile.filePath),
+  );
   const existingExternalImports = new Set(
-    repoMap.files
-      .flatMap((file) => file.imports)
+    [
+      ...repoMap.files
+        .filter((file) => !changedFilePaths.has(file.filePath))
+        .flatMap((file) => file.imports),
+      ...changedAnalyses.flatMap(({ previous }) => previous?.imports ?? []),
+    ]
       .filter((importInfo) => importInfo.isExternal)
       .map((importInfo) => packageName(importInfo.source)),
   );
@@ -177,11 +185,16 @@ function findConventionDrift(
     const nearby = nearbyFiles(repoMap.files, current.filePath);
     if (nearby.length === 0) continue;
 
-    const baseline = majorityConventions(nearby.map((file) => file.conventions));
+    const baseline = majorityConventions(
+      nearby.map((file) => file.conventions),
+    );
     const newDeclarationLines = current.declarations
       .filter((declaration) => changedFile.addedLines.has(declaration.line))
       .map((declaration) => declaration.line);
-    const line = Math.min(...newDeclarationLines, ...Array.from(changedFile.addedLines));
+    const line = Math.min(
+      ...newDeclarationLines,
+      ...Array.from(changedFile.addedLines),
+    );
 
     compareConvention(
       findings,
@@ -233,7 +246,8 @@ function findConventionDrift(
     if (
       previousDeclarationCount === 0 &&
       current.declarations.length > 0 &&
-      nearby.some((file) => isTestFile(file.filePath)) !== isTestFile(current.filePath)
+      nearby.some((file) => isTestFile(file.filePath)) !==
+        isTestFile(current.filePath)
     ) {
       findings.push({
         kind: "convention-drift",
@@ -256,7 +270,7 @@ function compareConvention<T extends keyof FileConventions>(
   findings: Finding[],
   filePath: string,
   line: number | undefined,
-  key: T,
+  _key: T,
   label: string,
   actual: FileConventions[T],
   expected: FileConventions[T],
@@ -313,14 +327,16 @@ function declarationKey(declaration: DeclarationInfo): string {
 function jaccard(left: string[], right: string[]): number {
   const leftSet = new Set(left);
   const rightSet = new Set(right);
-  const intersection = Array.from(leftSet).filter((token) => rightSet.has(token));
+  const intersection = Array.from(leftSet).filter((token) =>
+    rightSet.has(token),
+  );
   const union = new Set([...leftSet, ...rightSet]);
   return union.size === 0 ? 0 : intersection.length / union.size;
 }
 
 function packageName(source: string): string {
   if (source.startsWith("@")) return source.split("/").slice(0, 2).join("/");
-  return source.split("/")[0]?.replaceAll("-", "_") ?? source;
+  return source.split("/")[0] ?? source;
 }
 
 function tokenizePackageName(name: string): string[] {
@@ -332,7 +348,9 @@ function tokenizePackageName(name: string): string[] {
 }
 
 function isTestFile(filePath: string): boolean {
-  return /(\.|\/)(test|spec)\.[cm]?[jt]sx?$/.test(filePath.replaceAll("\\", "/"));
+  return /(\.|\/)(test|spec)\.[cm]?[jt]sx?$/.test(
+    filePath.replaceAll("\\", "/"),
+  );
 }
 
 function sortFindings(findings: Finding[]): Finding[] {

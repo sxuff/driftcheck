@@ -1,5 +1,5 @@
 import { sourceLanguage } from "../files.js";
-import { FileAnalysis } from "../types.js";
+import type { FileAnalysis } from "../types.js";
 import { analyzePythonFile } from "./python.js";
 import { analyzeRustFile } from "./rust.js";
 import { analyzeTypeScriptFile } from "./typescript.js";

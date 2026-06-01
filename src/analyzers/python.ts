@@ -1,4 +1,4 @@
-import {
+import type {
   DeclarationInfo,
   FileAnalysis,
   FileConventions,
@@ -40,7 +40,10 @@ const pythonStdlib = new Set([
   "uuid",
 ]);
 
-export function analyzePythonFile(filePath: string, text: string): FileAnalysis {
+export function analyzePythonFile(
+  filePath: string,
+  text: string,
+): FileAnalysis {
   const declarations: DeclarationInfo[] = [];
   const imports: ImportInfo[] = [];
   const lines = text.split(/\r?\n/);
@@ -53,7 +56,13 @@ export function analyzePythonFile(filePath: string, text: string): FileAnalysis 
     const classMatch = /^class\s+([A-Za-z_][A-Za-z0-9_]*)\b/.exec(trimmed);
     if (classMatch) {
       declarations.push(
-        declaration("class", classMatch[1], filePath, lineNumber, textBlock(lines, index)),
+        declaration(
+          "class",
+          classMatch[1],
+          filePath,
+          lineNumber,
+          textBlock(lines, index),
+        ),
       );
       continue;
     }
@@ -77,9 +86,18 @@ export function analyzePythonFile(filePath: string, text: string): FileAnalysis 
     const importMatch = /^import\s+(.+)$/.exec(trimmed);
     if (importMatch) {
       for (const source of importMatch[1].split(",")) {
-        const moduleName = source.trim().split(/\s+as\s+/)[0]?.trim();
+        const moduleName = source
+          .trim()
+          .split(/\s+as\s+/)[0]
+          ?.trim();
         if (!moduleName) continue;
-        imports.push(importInfo(moduleName.split(".")[0] ?? moduleName, filePath, lineNumber));
+        imports.push(
+          importInfo(
+            moduleName.split(".")[0] ?? moduleName,
+            filePath,
+            lineNumber,
+          ),
+        );
       }
       continue;
     }
@@ -118,8 +136,14 @@ function declaration(
   };
 }
 
-function importInfo(source: string, filePath: string, line: number): ImportInfo {
-  const topLevel = source.startsWith(".") ? source : source.split(".")[0] ?? source;
+function importInfo(
+  source: string,
+  filePath: string,
+  line: number,
+): ImportInfo {
+  const topLevel = source.startsWith(".")
+    ? source
+    : (source.split(".")[0] ?? source);
   return {
     source: topLevel,
     filePath,
@@ -164,8 +188,9 @@ function tokenizeDeclaration(name: string, text: string): string[] {
 }
 
 function detectPythonConventions(text: string): FileConventions {
-  const raiseErrorCount = (text.match(/\braise\s+[A-Za-z_][\w.]*(Error|Exception)\b/g) ?? [])
-    .length;
+  const raiseErrorCount = (
+    text.match(/\braise\s+[A-Za-z_][\w.]*(Error|Exception)\b/g) ?? []
+  ).length;
   const raiseLiteralCount = (text.match(/\braise\s+["']/g) ?? []).length;
 
   return {

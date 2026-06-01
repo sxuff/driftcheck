@@ -18,6 +18,7 @@ export async function makeFixtureRepo(): Promise<string> {
         name: "fixture",
         type: "module",
         dependencies: {
+          "date-fns": "^4.1.0",
           zod: "^3.23.8",
         },
       },

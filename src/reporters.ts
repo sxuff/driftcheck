@@ -1,10 +1,12 @@
-import { AnalyzeResult, Finding, RepoMap } from "./types.js";
+import type { AnalyzeResult, Finding, RepoMap } from "./types.js";
 
 export function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-export function formatText(value: AnalyzeResult | { repoMap: RepoMap }): string {
+export function formatText(
+  value: AnalyzeResult | { repoMap: RepoMap },
+): string {
   if ("repoMap" in value) return formatRepoMap(value.repoMap);
   return formatFindings(value.findings);
 }
@@ -14,7 +16,10 @@ function formatRepoMap(repoMap: RepoMap): string {
     (count, file) => count + file.declarations.length,
     0,
   );
-  const imports = repoMap.files.reduce((count, file) => count + file.imports.length, 0);
+  const imports = repoMap.files.reduce(
+    (count, file) => count + file.imports.length,
+    0,
+  );
 
   return [
     "driftcheck scan",

@@ -1,11 +1,6 @@
 import ts from "typescript";
-import {
-  DeclarationInfo,
-  FileAnalysis,
-  FileConventions,
-  ImportInfo,
-} from "../types.js";
 import { isExternalImport } from "../files.js";
+import type { DeclarationInfo, FileAnalysis, ImportInfo } from "../types.js";
 
 export function analyzeTypeScriptFile(
   filePath: string,
@@ -27,20 +22,31 @@ export function analyzeTypeScriptFile(
   let throwLiteralCount = 0;
 
   function lineOf(node: ts.Node): number {
-    return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+    return (
+      sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line +
+      1
+    );
   }
 
   function exported(node: ts.Node): boolean {
-    const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+    const modifiers = ts.canHaveModifiers(node)
+      ? ts.getModifiers(node)
+      : undefined;
     return Boolean(
-      modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
+      modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ),
     );
   }
 
   function isAsync(node: ts.Node): boolean {
-    const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+    const modifiers = ts.canHaveModifiers(node)
+      ? ts.getModifiers(node)
+      : undefined;
     return Boolean(
-      modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword),
+      modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
+      ),
     );
   }
 
@@ -64,7 +70,10 @@ export function analyzeTypeScriptFile(
   }
 
   function visit(node: ts.Node): void {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
       imports.push({
         source: node.moduleSpecifier.text,
         filePath,
@@ -100,7 +109,9 @@ export function analyzeTypeScriptFile(
             declaration,
             "function",
             declaration.name.text,
-            ts.isArrowFunction(declaration.initializer) ? "arrow" : "declaration",
+            ts.isArrowFunction(declaration.initializer)
+              ? "arrow"
+              : "declaration",
           );
         }
       }
@@ -118,12 +129,13 @@ export function analyzeTypeScriptFile(
 
   return {
     filePath,
-    language: filePath.endsWith(".js") ||
+    language:
+      filePath.endsWith(".js") ||
       filePath.endsWith(".jsx") ||
       filePath.endsWith(".mjs") ||
       filePath.endsWith(".cjs")
-      ? "javascript"
-      : "typescript",
+        ? "javascript"
+        : "typescript",
     declarations,
     imports,
     conventions: {
@@ -144,7 +156,11 @@ export function analyzeTypeScriptFile(
 function scriptKindFor(filePath: string): ts.ScriptKind {
   if (filePath.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (filePath.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filePath.endsWith(".js") || filePath.endsWith(".mjs") || filePath.endsWith(".cjs")) {
+  if (
+    filePath.endsWith(".js") ||
+    filePath.endsWith(".mjs") ||
+    filePath.endsWith(".cjs")
+  ) {
     return ts.ScriptKind.JS;
   }
   return ts.ScriptKind.TS;
@@ -172,7 +188,9 @@ function detectSemicolons(text: string): boolean | undefined {
   const statements = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => /^(const|let|var|return|import|export|throw)\b/.test(line));
+    .filter((line) =>
+      /^(const|let|var|return|import|export|throw)\b/.test(line),
+    );
   if (statements.length === 0) return undefined;
   const semicolonCount = statements.filter((line) => line.endsWith(";")).length;
   return semicolonCount / statements.length >= 0.5;

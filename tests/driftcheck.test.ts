@@ -2,13 +2,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { analyzeChanges } from "../src/driftcheck.js";
-import { scanRepo } from "../src/scan.js";
 import { parseUnifiedDiff } from "../src/git.js";
+import { scanRepo } from "../src/scan.js";
 import {
+  git,
   makeFixtureRepo,
   makePythonFixtureRepo,
   makeRustFixtureRepo,
-  git,
 } from "./fixtures.js";
 
 describe("parseUnifiedDiff", () => {
@@ -39,9 +39,9 @@ describe("scanRepo", () => {
       "src/features/user.ts",
       "src/utils/date.ts",
     ]);
-    expect(map.files.flatMap((file) => file.declarations).map((item) => item.name)).toContain(
-      "formatDateForDisplay",
-    );
+    expect(
+      map.files.flatMap((file) => file.declarations).map((item) => item.name),
+    ).toContain("formatDateForDisplay");
     expect(map.packageDependencies).toHaveProperty("zod");
   });
 
@@ -54,9 +54,9 @@ describe("scanRepo", () => {
       "app/features/users.py",
       "app/utils/dates.py",
     ]);
-    expect(map.files.flatMap((file) => file.declarations).map((item) => item.name)).toContain(
-      "format_date_for_display",
-    );
+    expect(
+      map.files.flatMap((file) => file.declarations).map((item) => item.name),
+    ).toContain("format_date_for_display");
     expect(map.packageDependencies).toHaveProperty("pydantic");
   });
 
@@ -69,9 +69,9 @@ describe("scanRepo", () => {
       "src/features/users.rs",
       "src/utils/dates.rs",
     ]);
-    expect(map.files.flatMap((file) => file.declarations).map((item) => item.name)).toContain(
-      "format_date_for_display",
-    );
+    expect(
+      map.files.flatMap((file) => file.declarations).map((item) => item.name),
+    ).toContain("format_date_for_display");
     expect(map.packageDependencies).toHaveProperty("serde");
   });
 });
@@ -151,12 +151,64 @@ describe("analyzeChanges", () => {
     ).toBe(false);
   });
 
+  it("does not normalize hyphenated JavaScript package names as Rust crate names", async () => {
+    const root = await makeFixtureRepo();
+    await writeFile(
+      path.join(root, "src", "features", "calendar.ts"),
+      [
+        "import { format } from 'date-fns'",
+        "",
+        "export const formatCalendarDate = (value: Date): string => {",
+        "  return format(value, 'yyyy-MM-dd')",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(
+      result.findings.some(
+        (finding) =>
+          finding.kind === "new-dependency" &&
+          finding.filePath === "src/features/calendar.ts",
+      ),
+    ).toBe(false);
+  });
+
+  it("flags undeclared dependencies added to tracked files", async () => {
+    const root = await makeFixtureRepo();
+    await writeFile(
+      path.join(root, "src", "features", "user.ts"),
+      [
+        "import slugify from 'slugify'",
+        "",
+        "export const normalizeUserName = (name: string): string => {",
+        "  return slugify(name.trim().toLowerCase())",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "new-dependency",
+          filePath: "src/features/user.ts",
+          line: 1,
+        }),
+      ]),
+    );
+  });
+
   it("learns nearby conventions and flags drift", async () => {
     const root = await makeFixtureRepo();
     await writeFile(
       path.join(root, "src", "features", "display.ts"),
       [
-        'export function DisplayName(name: string): string {',
+        "export function DisplayName(name: string): string {",
         '  return "Name: " + name;',
         "}",
         "",
@@ -192,9 +244,9 @@ describe("analyzeChanges", () => {
 
     const result = await analyzeChanges({ cwd: root, mode: "staged" });
 
-    expect(result.findings.some((finding) => finding.kind === "similar-declaration")).toBe(
-      true,
-    );
+    expect(
+      result.findings.some((finding) => finding.kind === "similar-declaration"),
+    ).toBe(true);
   });
 
   it("flags similar Python declarations", async () => {

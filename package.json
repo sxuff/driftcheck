@@ -1,10 +1,18 @@
 {
   "name": "driftcheck",
   "version": "0.1.0",
-  "description": "A semantic linter for AI-generated code drift.",
+  "description": "A local-first semantic linter for AI-generated code drift.",
   "type": "module",
   "bin": {
     "driftcheck": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "files": [
     "dist",
@@ -15,20 +23,35 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
-    "check": "npm run build && npm test"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "keywords": [
     "ai",
     "cli",
     "lint",
     "semantic",
-    "typescript"
+    "typescript",
+    "code-quality",
+    "semantic-analysis"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sxuff/driftcheck.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sxuff/driftcheck/issues"
+  },
+  "homepage": "https://github.com/sxuff/driftcheck#readme",
+  "packageManager": "npm@10.8.2",
   "dependencies": {
     "typescript": "^5.4.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.16",
     "@types/node": "^20.14.2",
     "tsx": "^4.15.6",
     "vitest": "^4.1.7"
