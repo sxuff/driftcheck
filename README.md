@@ -363,13 +363,3 @@ npm run lint
 npm run build
 npm run check
 ```
-
-Regenerate the README demo with Docker and [VHS](https://github.com/charmbracelet/vhs):
-
-```bash
-MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "$(pwd -W):/vhs" \
-  -w /vhs \
-  ghcr.io/charmbracelet/vhs \
-  driftcheck-demo.tape
-```
