@@ -8,11 +8,22 @@ import { formatBrief } from "./brief.js";
 import { analyzeChanges } from "./driftcheck.js";
 import { loadConfig } from "./config.js";
 import { inferRepoRules } from "./inferred-rules.js";
+import { initializeConfig } from "./init.js";
+import { repoRoot } from "./git.js";
 import { filterFindings, formatOutput, shouldFail } from "./reporters.js";
 import { scanRepo } from "./scan.js";
+import { writeBaseline } from "./suppressions.js";
 import type { OutputFormat, Severity } from "./types.js";
+import { packageVersion } from "./version.js";
 
-type Command = "diff" | "staged" | "scan" | "agents-init" | "brief";
+type Command =
+  | "diff"
+  | "staged"
+  | "scan"
+  | "agents-init"
+  | "brief"
+  | "init"
+  | "baseline";
 
 interface ParsedArgs {
   command?: Command;
@@ -25,6 +36,7 @@ interface ParsedArgs {
   failOn: Severity;
   rules: boolean;
   cursor: boolean;
+  version: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -37,6 +49,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     failOn: "error",
     rules: false,
     cursor: false,
+    version: false,
   };
 
   while (args.length > 0) {
@@ -45,6 +58,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "--json") {
       parsed.format = "json";
+      continue;
+    }
+
+    if (arg === "-v" || arg === "--version") {
+      parsed.version = true;
       continue;
     }
 
@@ -105,7 +123,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       arg === "diff" ||
       arg === "staged" ||
       arg === "scan" ||
-      arg === "brief"
+      arg === "brief" ||
+      arg === "init" ||
+      arg === "baseline"
     ) {
       parsed.command = arg;
       continue;
@@ -127,11 +147,13 @@ function help(): string {
     "driftcheck - semantic linting for AI-generated code drift",
     "",
     "Usage:",
-    "  driftcheck diff [--format text|json|github] [--cwd <path>]",
-    "  driftcheck staged [--format text|json|github] [--cwd <path>]",
+    "  driftcheck diff [--format text|json|github|sarif] [--cwd <path>]",
+    "  driftcheck staged [--format text|json|github|sarif] [--cwd <path>]",
     "  driftcheck scan [--rules] [--format text|json] [--cwd <path>]",
     "  driftcheck agents init [--cursor] [--cwd <path>]",
     "  driftcheck brief [--cwd <path>]",
+    "  driftcheck init [--cwd <path>]",
+    "  driftcheck baseline [--cwd <path>]",
     "",
     "Commands:",
     "  diff     Analyze unstaged working tree changes",
@@ -139,9 +161,12 @@ function help(): string {
     "  scan     Build a lightweight map of repo patterns",
     "  agents init  Generate agent-readable repo convention files",
     "  brief    Print a compact repair prompt for the current diff",
+    "  init     Scaffold driftcheck.config.json",
+    "  baseline Accept current findings into driftcheck-baseline.json",
     "",
     "Options:",
     "  --json                  Alias for --format json",
+    "  -v, --version           Print the installed driftcheck version",
     "  --config <path>         Read config from a custom path",
     "  --no-config             Ignore driftcheck.config.json",
     "  --severity <level>      Show findings at or above info, warning, or error",
@@ -153,8 +178,23 @@ function help(): string {
 async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
 
+  if (args.version) {
+    console.log(await packageVersion());
+    return 0;
+  }
+
   if (!args.command) {
     console.log(help());
+    return 0;
+  }
+
+  if (args.command === "init") {
+    const result = await initializeConfig(args.cwd);
+    console.log(
+      result.generated
+        ? `Generated:\n- ${result.generated}`
+        : `Skipped:\n- ${result.skipped}`,
+    );
     return 0;
   }
 
@@ -195,8 +235,12 @@ async function main(argv: string[]): Promise<number> {
 
   const result = await analyzeChanges({
     cwd: args.cwd,
-    mode: args.command === "brief" ? "diff" : args.command,
+    mode:
+      args.command === "brief" || args.command === "baseline"
+        ? "diff"
+        : args.command,
     config,
+    suppressions: args.command !== "baseline",
   });
   const filteredFindings = filterFindings(result.findings, {
     minSeverity: args.minSeverity,
@@ -206,6 +250,25 @@ async function main(argv: string[]): Promise<number> {
 
   if (args.command === "brief") {
     console.log(formatBrief(filteredFindings));
+    return 0;
+  }
+
+  if (args.command === "baseline") {
+    const root = await repoRoot(args.cwd);
+    const written = await writeBaseline(
+      root,
+      config.baselinePath ?? "driftcheck-baseline.json",
+      filteredFindings,
+    );
+    console.log(
+      [
+        `Generated:\n- ${written.path}`,
+        written.backup ? `Backup:\n- ${written.backup}` : undefined,
+        `Accepted ${filteredFindings.length} current finding${filteredFindings.length === 1 ? "" : "s"}.`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
     return 0;
   }
 
@@ -220,7 +283,13 @@ function readValue(args: string[], flag: string): string {
 }
 
 function parseFormat(value: string): OutputFormat {
-  if (value === "text" || value === "json" || value === "github") return value;
+  if (
+    value === "text" ||
+    value === "json" ||
+    value === "github" ||
+    value === "sarif"
+  )
+    return value;
   throw new Error(`Invalid --format value: ${value}`);
 }
 

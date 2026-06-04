@@ -11,7 +11,20 @@ Today it detects duplicated abstractions, undeclared dependency drift, and nearb
 
 The MVP is local-first and focused on TypeScript/JavaScript, Python, and Rust repositories.
 
-![driftcheck CLI demo](docs/demo.svg)
+![driftcheck CLI demo](docs/demo.gif)
+
+## Contents
+
+- [Why](#why)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Suppressions And Baselines](#suppressions-and-baselines)
+- [Agent-Ready Workflow](#agent-ready-workflow)
+- [Configuration](#configuration)
+- [Rules](#rules)
+- [GitHub Actions And SARIF](#github-actions-and-sarif)
+- [Why Not ESLint Or Semgrep?](#why-not-eslint-or-semgrep)
+- [Development](#development)
 
 ## Why
 
@@ -137,6 +150,43 @@ Generate a compact repair prompt for the current diff:
 driftcheck brief
 ```
 
+Print the installed version:
+
+```bash
+driftcheck --version
+```
+
+Scaffold a config file:
+
+```bash
+driftcheck init
+```
+
+Emit SARIF for GitHub code scanning:
+
+```bash
+driftcheck staged --format sarif > driftcheck.sarif
+```
+
+## Suppressions And Baselines
+
+Suppress a specific finding on the next line:
+
+```ts
+// driftcheck-disable-next-line DC001
+export function intentionallySimilarHelper() {}
+```
+
+Python uses the equivalent `# driftcheck-disable-next-line DC001` comment. Rust uses `//`.
+
+To accept all current findings into the configured baseline:
+
+```bash
+driftcheck baseline
+```
+
+This writes `driftcheck-baseline.json`. Future runs hide matching findings while still reporting new drift. Existing baseline files are backed up before replacement.
+
 ## Agent-Ready Workflow
 
 `driftcheck scan --rules` detects deterministic, local conventions including:
@@ -174,6 +224,7 @@ driftcheck looks for `driftcheck.config.json` at the repo root. Use `--config <p
 ```json
 {
   "ignorePaths": ["dist/**", "coverage/**"],
+  "baselinePath": "driftcheck-baseline.json",
   "languages": ["javascript", "typescript", "python", "rust"],
   "rules": {
     "DC001": {
@@ -196,6 +247,7 @@ driftcheck looks for `driftcheck.config.json` at the repo root. Use `--config <p
 Config fields:
 
 - `ignorePaths`: glob-style paths to skip.
+- `baselinePath`: optional file containing accepted finding fingerprints.
 - `languages`: enabled analyzers.
 - `rules.<code>.enabled`: turn a rule on or off.
 - `rules.<code>.severity`: override emitted severity.
@@ -203,33 +255,15 @@ Config fields:
 
 ## Rules
 
-### DC001 Similar Declaration
-
-Flags new functions/classes/types that look similar to existing declarations.
-
-### DC002 New Dependency
-
-Flags new external imports that are not already used and not declared in a dependency manifest.
-
-### DC003 Convention Drift
-
-Flags changed files that differ from nearby quote, semicolon, export, function, error-handling, or source/test placement patterns.
-
-### DC004 Dependency Preference
-
-Flags a new package when inferred repo rules show an established library for the same concern.
-
-### DC005 Existing Utility
-
-Flags a new helper when an evidence-backed shared utility appears to own that concern.
-
-### DC006 Test Framework
-
-Flags changed tests that use a framework style conflicting with the inferred repo test framework.
-
-### DC007 Repository Boundary
-
-Flags conservative architecture-boundary, generated-file, and package-manager drift.
+| Code | Name | Default severity | What it flags |
+| --- | --- | --- | --- |
+| `DC001` | Similar declaration | score-based | New functions/classes/types resembling existing declarations |
+| `DC002` | New dependency | warning | Undeclared external imports |
+| `DC003` | Convention drift | info | Nearby style, export, error-handling, and placement differences |
+| `DC004` | Dependency preference | warning | New packages competing with an inferred established choice |
+| `DC005` | Existing utility | warning | New helpers when a shared utility appears to own the concern |
+| `DC006` | Test framework | warning | Test style conflicting with the inferred framework |
+| `DC007` | Repository boundary | warning | Architecture boundaries, generated files, package managers, and lockfiles |
 
 ## Example
 
@@ -266,7 +300,9 @@ See [ROADMAP.md](ROADMAP.md) for goal-sized build loops and copyable `/goal` pro
 - Architecture rules from project docs, ADRs, and import boundaries.
 - npm publishing with GitHub Actions trusted publishing.
 
-## GitHub Actions
+## GitHub Actions And SARIF
+
+Use the composite Action:
 
 ```yaml
 name: Driftcheck
@@ -281,18 +317,47 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: sxuff/driftcheck@v1
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx driftcheck staged --format github --fail-on warning
+          command: diff --format github --fail-on warning
 ```
+
+Upload SARIF into GitHub code scanning:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+  - run: npx driftcheck diff --format sarif > driftcheck.sarif
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: driftcheck.sarif
+```
+
+## Why Not ESLint Or Semgrep?
+
+ESLint checks explicit syntax and style rules. Semgrep checks patterns you already know to describe. driftcheck focuses on **drift detection**: it learns evidence-backed choices already present in a repository, then flags new code that introduces a competing abstraction, dependency, convention, or boundary.
+
+Use them together:
+
+- ESLint for language-level correctness and configured style.
+- Semgrep for known security and code patterns.
+- driftcheck for changes that are locally valid but inconsistent with the repository they enter.
+
+## Releases
+
+Releases use Conventional Commits, Release Please, GitHub Releases, and npm trusted publishing. See [docs/RELEASING.md](docs/RELEASING.md) for the one-time manual npm bootstrap and normal release flow.
 
 ## Development
 
 ```bash
 npm test
+npm run test:coverage
 npm run typecheck
 npm run lint
 npm run build

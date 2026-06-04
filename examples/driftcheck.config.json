@@ -1,6 +1,7 @@
 {
   "ignorePaths": ["dist/**", "coverage/**", "fixtures/generated/**"],
   "languages": ["javascript", "typescript", "python", "rust"],
+  "baselinePath": "driftcheck-baseline.json",
   "rules": {
     "DC001": {
       "enabled": true,

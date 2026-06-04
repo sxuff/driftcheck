@@ -80,6 +80,7 @@ export interface AnalyzeOptions {
   config?: DriftcheckConfig;
   configPath?: string;
   noConfig?: boolean;
+  suppressions?: boolean;
 }
 
 export interface AnalyzeResult {
@@ -97,6 +98,7 @@ export interface DriftcheckConfig {
   languages: Language[];
   rules: Record<RuleCode, RuleConfig>;
   inferredRules: InferredRule[];
+  baselinePath?: string;
 }
 
 export interface DriftcheckConfigInput {
@@ -104,9 +106,20 @@ export interface DriftcheckConfigInput {
   languages?: Language[];
   rules?: Partial<Record<RuleCode, RuleConfig>>;
   inferredRules?: InferredRule[];
+  baselinePath?: string;
 }
 
-export type OutputFormat = "text" | "json" | "github";
+export type OutputFormat = "text" | "json" | "github" | "sarif";
+
+export interface BaselineFile {
+  version: 1;
+  findings: Array<{
+    fingerprint: string;
+    code: RuleCode;
+    filePath: string;
+    title: string;
+  }>;
+}
 
 export type RuleConfidence = "high" | "medium" | "low";
 

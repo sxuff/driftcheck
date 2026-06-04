@@ -1,0 +1,28 @@
+name: driftcheck
+description: Check a Git diff for semantic drift from existing repository conventions
+author: sxuff
+
+branding:
+  icon: git-pull-request
+  color: blue
+
+inputs:
+  command:
+    description: driftcheck command and options
+    required: false
+    default: diff --format github --fail-on warning
+  version:
+    description: npm package version to run
+    required: false
+    default: latest
+  working-directory:
+    description: repository directory to analyze
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx --yes driftcheck@${{ inputs.version }} ${{ inputs.command }}

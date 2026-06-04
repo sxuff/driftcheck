@@ -7,15 +7,33 @@ import type { ChangedFile } from "./types.js";
 const execFileAsync = promisify(execFile);
 
 export async function git(args: string[], cwd: string): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, {
-    cwd,
-    maxBuffer: 1024 * 1024 * 16,
-  });
-  return stdout.trimEnd();
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      maxBuffer: 1024 * 1024 * 16,
+    });
+    return stdout.trimEnd();
+  } catch (error) {
+    if (isMaxBufferError(error)) {
+      throw new Error(
+        "Git output exceeded driftcheck's 16 MB safety limit. Analyze a smaller diff or split the change.",
+      );
+    }
+    throw error;
+  }
 }
 
 export async function repoRoot(cwd: string): Promise<string> {
-  return git(["rev-parse", "--show-toplevel"], cwd);
+  try {
+    return await git(["rev-parse", "--show-toplevel"], cwd);
+  } catch (error) {
+    if (gitErrorText(error).includes("not a git repository")) {
+      throw new Error(
+        `driftcheck must run inside a Git repository. No repository was found from ${cwd}.`,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function listTrackedFiles(cwd: string): Promise<string[]> {
@@ -101,4 +119,19 @@ export function parseUnifiedDiff(diff: string): ChangedFile[] {
     filePath,
     addedLines,
   }));
+}
+
+function isMaxBufferError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+  );
+}
+
+function gitErrorText(error: unknown): string {
+  if (!(error instanceof Error)) return String(error).toLowerCase();
+  const stderr =
+    "stderr" in error && typeof error.stderr === "string" ? error.stderr : "";
+  return `${error.message} ${stderr}`.toLowerCase();
 }

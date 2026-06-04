@@ -22,10 +22,65 @@ export function formatOutput(
   format: OutputFormat,
 ): string {
   if (format === "json") return formatJson(value);
+  if (format === "sarif" && !("repoMap" in value)) {
+    return formatJson(formatSarif(value.findings));
+  }
   if (format === "github" && !("repoMap" in value)) {
     return formatGithub(value.findings);
   }
   return formatText(value);
+}
+
+export function formatSarif(findings: Finding[]): object {
+  const rules = Array.from(
+    new Map(
+      findings.map((finding) => [
+        finding.code,
+        {
+          id: finding.code,
+          name: finding.title,
+          shortDescription: { text: finding.title },
+          helpUri: finding.docsUrl,
+          defaultConfiguration: { level: sarifLevel(finding.severity) },
+        },
+      ]),
+    ).values(),
+  );
+  return {
+    version: "2.1.0",
+    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "driftcheck",
+            informationUri: "https://github.com/sxuff/driftcheck",
+            rules,
+          },
+        },
+        results: findings.map((finding) => ({
+          ruleId: finding.code,
+          level: sarifLevel(finding.severity),
+          message: {
+            text: `${finding.message} Suggestion: ${finding.suggestion}`,
+          },
+          locations: [
+            {
+              physicalLocation: {
+                artifactLocation: {
+                  uri: finding.filePath.replaceAll("\\", "/"),
+                },
+                region:
+                  finding.line === undefined
+                    ? undefined
+                    : { startLine: finding.line },
+              },
+            },
+          ],
+        })),
+      },
+    ],
+  };
 }
 
 export function filterFindings(
@@ -127,6 +182,11 @@ function groupByFile(findings: Finding[]): Array<[string, Finding[]]> {
 
 function severityRank(severity: Severity): number {
   return { error: 0, warning: 1, info: 2 }[severity];
+}
+
+function sarifLevel(severity: Severity): "note" | "warning" | "error" {
+  if (severity === "info") return "note";
+  return severity;
 }
 
 function escapeGithubProperty(value: string): string {

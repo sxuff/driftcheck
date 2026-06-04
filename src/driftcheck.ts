@@ -8,6 +8,7 @@ import {
 } from "./files.js";
 import { getChangedFiles, readHeadFile, repoRoot } from "./git.js";
 import { scanRepo } from "./scan.js";
+import { applySuppressions } from "./suppressions.js";
 import type {
   AnalyzeOptions,
   AnalyzeResult,
@@ -73,7 +74,17 @@ export async function analyzeChanges(
     )),
   ];
 
-  return { findings: dedupeFindings(sortFindings(findings)) };
+  const deduped = dedupeFindings(sortFindings(findings));
+  return {
+    findings:
+      options.suppressions === false
+        ? deduped
+        : await applySuppressions({
+            root,
+            findings: deduped,
+            baselinePath: config.baselinePath,
+          }),
+  };
 }
 
 function findSimilarDeclarations(

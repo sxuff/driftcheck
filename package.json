@@ -1,6 +1,6 @@
 {
   "name": "driftcheck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local-first semantic linter for AI-generated code drift.",
   "type": "module",
   "bin": {
@@ -18,17 +18,19 @@
     "dist",
     "docs",
     "examples",
+    "action.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run test:coverage && npm run build",
     "prepack": "npm run check"
   },
   "keywords": [
@@ -49,13 +51,14 @@
     "url": "https://github.com/sxuff/driftcheck/issues"
   },
   "homepage": "https://github.com/sxuff/driftcheck#readme",
-  "packageManager": "npm@10.8.2",
+  "packageManager": "npm@11.5.1",
   "dependencies": {
     "typescript": "^5.4.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@types/node": "^20.14.2",
+    "@vitest/coverage-v8": "^4.1.7",
     "tsx": "^4.15.6",
     "vitest": "^4.1.7"
   },

@@ -51,6 +51,7 @@ export const defaultConfig: DriftcheckConfig = {
     DC007: { enabled: true, severity: "warning" },
   },
   inferredRules: [],
+  baselinePath: "driftcheck-baseline.json",
 };
 
 export async function loadConfig(options: {
@@ -100,6 +101,7 @@ export function mergeConfig(
     ignorePaths: input.ignorePaths ?? base.ignorePaths ?? [],
     rules,
     inferredRules: input.inferredRules ?? base.inferredRules ?? [],
+    baselinePath: input.baselinePath ?? base.baselinePath,
   };
 }
 

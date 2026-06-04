@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { analyzeSourceFile } from "./analyzers/index.js";
 import { loadConfig, shouldIgnorePath } from "./config.js";
@@ -7,7 +7,7 @@ import {
   readTextFile,
   sourceLanguage,
 } from "./files.js";
-import { listTrackedFiles, repoRoot } from "./git.js";
+import { git, listTrackedFiles, repoRoot } from "./git.js";
 import type { DriftcheckConfig, FileAnalysis, RepoMap } from "./types.js";
 
 export async function scanRepo(
@@ -16,6 +16,9 @@ export async function scanRepo(
 ): Promise<RepoMap> {
   const root = await repoRoot(cwd);
   const resolvedConfig = config ?? (await loadConfig({ cwd: root }));
+  const cacheKey = await scanCacheKey(root, resolvedConfig);
+  const cached = cacheKey ? await readScanCache(root, cacheKey) : undefined;
+  if (cached) return cached;
   const trackedFiles = await listTrackedFiles(root);
   const files: FileAnalysis[] = [];
 
@@ -33,11 +36,13 @@ export async function scanRepo(
     if (analysis) files.push(analysis);
   }
 
-  return {
+  const repoMap = {
     root,
     files,
     packageDependencies: await readPackageDependencies(root),
   };
+  if (cacheKey) await writeScanCache(root, cacheKey, repoMap);
+  return repoMap;
 }
 
 export async function readPackageDependencies(
@@ -166,4 +171,59 @@ async function readCargoDependencies(
 
 function normalizeRustCrateName(name: string): string {
   return name.replaceAll("-", "_");
+}
+
+interface ScanCache {
+  key: string;
+  repoMap: RepoMap;
+}
+
+async function scanCacheKey(
+  root: string,
+  config: DriftcheckConfig,
+): Promise<string | undefined> {
+  try {
+    const head = await git(["rev-parse", "HEAD"], root);
+    return `${head}:${JSON.stringify({
+      ignorePaths: config.ignorePaths,
+      languages: config.languages,
+    })}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readScanCache(
+  root: string,
+  key: string,
+): Promise<RepoMap | undefined> {
+  try {
+    const cache = JSON.parse(
+      await readFile(await cachePath(root), "utf8"),
+    ) as ScanCache;
+    return cache.key === key ? cache.repoMap : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeScanCache(
+  root: string,
+  key: string,
+  repoMap: RepoMap,
+): Promise<void> {
+  try {
+    await writeFile(
+      await cachePath(root),
+      JSON.stringify({ key, repoMap } satisfies ScanCache),
+      "utf8",
+    );
+  } catch {
+    // Cache failures must never block analysis.
+  }
+}
+
+async function cachePath(root: string): Promise<string> {
+  const gitDir = await git(["rev-parse", "--git-dir"], root);
+  return path.resolve(root, gitDir, "driftcheck-scan-cache.json");
 }

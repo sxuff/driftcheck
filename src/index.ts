@@ -7,12 +7,26 @@ export {
 export { formatBrief } from "./brief.js";
 export { defaultConfig, loadConfig } from "./config.js";
 export { analyzeChanges } from "./driftcheck.js";
+export { initializeConfig } from "./init.js";
 export { enforceableRules, inferRepoRules } from "./inferred-rules.js";
-export { filterFindings, formatOutput, shouldFail } from "./reporters.js";
+export {
+  filterFindings,
+  formatOutput,
+  formatSarif,
+  shouldFail,
+} from "./reporters.js";
 export { scanRepo } from "./scan.js";
+export {
+  applySuppressions,
+  createBaseline,
+  findingFingerprint,
+  writeBaseline,
+} from "./suppressions.js";
+export { packageVersion } from "./version.js";
 export type {
   AnalyzeOptions,
   AnalyzeResult,
+  BaselineFile,
   ChangedFile,
   DeclarationInfo,
   DriftcheckConfig,
