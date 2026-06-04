@@ -1,6 +1,6 @@
 {
   "name": "driftcheck",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local-first semantic linter for AI-generated code drift.",
   "type": "module",
   "bin": {
