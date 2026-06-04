@@ -19,6 +19,15 @@ AI agents are fast at producing code, but they often miss the quiet social contr
 
 `driftcheck` looks at the code that is already there, then reviews your changed files for drift before those changes become permanent.
 
+It can also make a repository agent-ready by generating evidence-backed instructions for coding agents:
+
+```bash
+npx driftcheck scan --rules
+npx driftcheck agents init
+npx driftcheck diff
+npx driftcheck brief
+```
+
 ## Features
 
 - Detects new functions/classes/types that resemble existing abstractions.
@@ -27,6 +36,8 @@ AI agents are fast at producing code, but they often miss the quiet social contr
 - Works locally on real git diffs and staged changes.
 - Supports text output for humans and JSON output for CI.
 - Starts with JavaScript/TypeScript, Python, and Rust.
+- Infers concrete repo conventions and generates `AGENTS.md`.
+- Produces compact repair briefs for AI coding agents.
 
 ## Quick Start
 
@@ -107,6 +118,47 @@ driftcheck diff --config examples/driftcheck.config.json
 driftcheck diff --no-config
 ```
 
+Infer repo conventions with evidence:
+
+```bash
+driftcheck scan --rules
+```
+
+Generate agent-readable instructions and machine-readable inferred rules:
+
+```bash
+driftcheck agents init
+driftcheck agents init --cursor
+```
+
+Generate a compact repair prompt for the current diff:
+
+```bash
+driftcheck brief
+```
+
+## Agent-Ready Workflow
+
+`driftcheck scan --rules` detects deterministic, local conventions including:
+
+- Package manager lockfiles.
+- Test frameworks.
+- Existing dependency choices for dates, HTTP, validation, tests, and logging.
+- Likely shared utility homes.
+- Conservative client/server folder boundaries.
+- Generated output and repository validation commands.
+
+Every inferred rule includes evidence and a confidence level. `agents init` writes only high- and medium-confidence rules by default.
+
+Generated files:
+
+- `AGENTS.md`
+- `driftcheck.config.json`
+- `.cursor/rules/driftcheck.mdc` when `.cursor/` exists or `--cursor` is passed
+- A marked driftcheck section in an existing `CLAUDE.md`
+
+Existing files are backed up before driftcheck updates them.
+
 ## What It Checks
 
 - **Similar declarations**: newly added functions/classes are compared with existing declarations using AST-style extraction and token similarity.
@@ -162,6 +214,22 @@ Flags new external imports that are not already used and not declared in a depen
 ### DC003 Convention Drift
 
 Flags changed files that differ from nearby quote, semicolon, export, function, error-handling, or source/test placement patterns.
+
+### DC004 Dependency Preference
+
+Flags a new package when inferred repo rules show an established library for the same concern.
+
+### DC005 Existing Utility
+
+Flags a new helper when an evidence-backed shared utility appears to own that concern.
+
+### DC006 Test Framework
+
+Flags changed tests that use a framework style conflicting with the inferred repo test framework.
+
+### DC007 Repository Boundary
+
+Flags conservative architecture-boundary, generated-file, and package-manager drift.
 
 ## Example
 

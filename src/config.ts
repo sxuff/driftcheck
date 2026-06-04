@@ -13,6 +13,10 @@ export const ruleDocs: Record<RuleCode, string> = {
   DC001: "https://github.com/sxuff/driftcheck#dc001-similar-declaration",
   DC002: "https://github.com/sxuff/driftcheck#dc002-new-dependency",
   DC003: "https://github.com/sxuff/driftcheck#dc003-convention-drift",
+  DC004: "https://github.com/sxuff/driftcheck#dc004-dependency-preference",
+  DC005: "https://github.com/sxuff/driftcheck#dc005-existing-utility",
+  DC006: "https://github.com/sxuff/driftcheck#dc006-test-framework",
+  DC007: "https://github.com/sxuff/driftcheck#dc007-architecture-boundary",
 };
 
 const defaultLanguages: Language[] = [
@@ -24,7 +28,15 @@ const defaultLanguages: Language[] = [
 
 const validLanguages = new Set(defaultLanguages);
 const validSeverities = new Set<Severity>(["info", "warning", "error"]);
-const validRuleCodes = new Set<RuleCode>(["DC001", "DC002", "DC003"]);
+const validRuleCodes = new Set<RuleCode>([
+  "DC001",
+  "DC002",
+  "DC003",
+  "DC004",
+  "DC005",
+  "DC006",
+  "DC007",
+]);
 
 export const defaultConfig: DriftcheckConfig = {
   ignorePaths: ["dist/**", "node_modules/**", "coverage/**"],
@@ -33,7 +45,12 @@ export const defaultConfig: DriftcheckConfig = {
     DC001: { enabled: true, severity: undefined, threshold: 0.5 },
     DC002: { enabled: true, severity: "warning" },
     DC003: { enabled: true, severity: "info" },
+    DC004: { enabled: true, severity: "warning" },
+    DC005: { enabled: true, severity: "warning" },
+    DC006: { enabled: true, severity: "warning" },
+    DC007: { enabled: true, severity: "warning" },
   },
+  inferredRules: [],
 };
 
 export async function loadConfig(options: {
@@ -82,6 +99,7 @@ export function mergeConfig(
     languages: normalizeLanguages(input.languages ?? base.languages),
     ignorePaths: input.ignorePaths ?? base.ignorePaths ?? [],
     rules,
+    inferredRules: input.inferredRules ?? base.inferredRules ?? [],
   };
 }
 

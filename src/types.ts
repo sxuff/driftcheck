@@ -5,9 +5,17 @@ export type Language = "javascript" | "typescript" | "python" | "rust";
 export type FindingKind =
   | "similar-declaration"
   | "new-dependency"
-  | "convention-drift";
+  | "convention-drift"
+  | "inferred-rule-drift";
 
-export type RuleCode = "DC001" | "DC002" | "DC003";
+export type RuleCode =
+  | "DC001"
+  | "DC002"
+  | "DC003"
+  | "DC004"
+  | "DC005"
+  | "DC006"
+  | "DC007";
 
 export interface Finding {
   code: RuleCode;
@@ -88,12 +96,41 @@ export interface DriftcheckConfig {
   ignorePaths: string[];
   languages: Language[];
   rules: Record<RuleCode, RuleConfig>;
+  inferredRules: InferredRule[];
 }
 
 export interface DriftcheckConfigInput {
   ignorePaths?: string[];
   languages?: Language[];
   rules?: Partial<Record<RuleCode, RuleConfig>>;
+  inferredRules?: InferredRule[];
 }
 
 export type OutputFormat = "text" | "json" | "github";
+
+export type RuleConfidence = "high" | "medium" | "low";
+
+export type InferredRuleKind =
+  | "package-manager"
+  | "test-framework"
+  | "dependency-preference"
+  | "common-utility"
+  | "architecture-boundary"
+  | "generated-files"
+  | "command";
+
+export interface RuleEvidence {
+  path: string;
+  reason: string;
+}
+
+export interface InferredRule {
+  id: string;
+  kind: InferredRuleKind;
+  title: string;
+  description: string;
+  evidence: RuleEvidence[];
+  confidence: RuleConfidence;
+  severity: Severity;
+  data?: Record<string, string | string[]>;
+}

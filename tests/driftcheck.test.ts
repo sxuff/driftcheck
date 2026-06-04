@@ -1,13 +1,17 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { initializeAgents, renderAgentsMarkdown } from "../src/agents.js";
+import { formatBrief } from "../src/brief.js";
 import { loadConfig } from "../src/config.js";
 import { analyzeChanges } from "../src/driftcheck.js";
 import { parseUnifiedDiff } from "../src/git.js";
+import { inferRepoRules } from "../src/inferred-rules.js";
 import { filterFindings, formatOutput, shouldFail } from "../src/reporters.js";
 import { scanRepo } from "../src/scan.js";
 import {
   git,
+  makeAgentReadyFixtureRepo,
   makeFixtureRepo,
   makePythonFixtureRepo,
   makeRustFixtureRepo,
@@ -28,6 +32,130 @@ describe("parseUnifiedDiff", () => {
     expect(changed).toEqual([
       { filePath: "src/a.ts", addedLines: new Set([2, 3]) },
     ]);
+  });
+});
+
+describe("agent-ready rule inference", () => {
+  it("detects package manager, test framework, and dependency preferences", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+
+    const rules = await inferRepoRules(root);
+
+    expect(rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "package-manager",
+          title: "Package manager: npm",
+          confidence: "high",
+        }),
+        expect.objectContaining({
+          kind: "test-framework",
+          title: "Test framework: Vitest",
+        }),
+        expect.objectContaining({
+          kind: "dependency-preference",
+          title: "Preferred dates dependency: dayjs",
+        }),
+        expect.objectContaining({
+          kind: "common-utility",
+          title: "Existing date utility: src/utils/date.ts",
+        }),
+      ]),
+    );
+    expect(rules.every((rule) => rule.evidence.length > 0)).toBe(true);
+  });
+
+  it("generates AGENTS.md and machine-readable inferred rules safely", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await writeFile(path.join(root, "AGENTS.md"), "# Existing instructions\n");
+
+    const result = await initializeAgents({ cwd: root });
+    const agents = await readFile(path.join(root, "AGENTS.md"), "utf8");
+    const generatedConfig = JSON.parse(
+      await readFile(path.join(root, "driftcheck.config.json"), "utf8"),
+    ) as { inferredRules: Array<{ confidence: string }> };
+
+    expect(result.generated).toContain("AGENTS.md");
+    expect(result.generated).toContain("driftcheck.config.json");
+    expect(result.backups).toContain("AGENTS.md.driftcheck.bak");
+    expect(agents).toContain("Use npm");
+    expect(agents).toContain("Use Vitest");
+    expect(generatedConfig.inferredRules.length).toBeGreaterThan(0);
+    expect(
+      generatedConfig.inferredRules.every((rule) => rule.confidence !== "low"),
+    ).toBe(true);
+  });
+
+  it("generates Cursor rules and safely appends to an existing CLAUDE.md", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await mkdir(path.join(root, ".cursor"), { recursive: true });
+    await writeFile(path.join(root, "CLAUDE.md"), "# Existing Claude rules\n");
+
+    const result = await initializeAgents({ cwd: root });
+    const claude = await readFile(path.join(root, "CLAUDE.md"), "utf8");
+    const cursor = await readFile(
+      path.join(root, ".cursor", "rules", "driftcheck.mdc"),
+      "utf8",
+    );
+
+    expect(result.generated).toContain(".cursor/rules/driftcheck.mdc");
+    expect(result.generated).toContain("CLAUDE.md");
+    expect(result.backups).toContain("CLAUDE.md.driftcheck.bak");
+    expect(claude).toContain("<!-- driftcheck:start -->");
+    expect(cursor).toContain("Repository conventions inferred by driftcheck");
+  });
+
+  it("detects conservative architecture boundaries and generated files", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await mkdir(path.join(root, "src", "client"), { recursive: true });
+    await mkdir(path.join(root, "src", "server"), { recursive: true });
+    await mkdir(path.join(root, "generated"), { recursive: true });
+    await writeFile(
+      path.join(root, "src", "client", "view.ts"),
+      "export const view = 'client'\n",
+    );
+    await writeFile(
+      path.join(root, "src", "server", "db.ts"),
+      "export const db = 'server'\n",
+    );
+    await writeFile(
+      path.join(root, "generated", "client.generated.ts"),
+      "export const generated = true\n",
+    );
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "add boundaries"]);
+
+    const rules = await inferRepoRules(root);
+
+    expect(rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "architecture-boundary" }),
+        expect.objectContaining({ kind: "generated-files" }),
+      ]),
+    );
+  });
+
+  it("renders a compact repair brief", () => {
+    const brief = formatBrief([
+      finding("DC005", "warning", "Reuse src/utils/date.ts."),
+      finding("DC001", "info", "Consider the similar helper."),
+      finding("DC006", "warning", "Match Vitest style."),
+    ]);
+
+    expect(brief).toContain("violates 2 repo conventions");
+    expect(brief).toContain("1. Reuse src/utils/date.ts.");
+    expect(brief).not.toContain("similar helper");
+    expect(brief).toContain("Fix the diff while keeping behavior unchanged.");
+  });
+
+  it("renders practical AGENTS.md content", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    const markdown = renderAgentsMarkdown(await inferRepoRules(root));
+
+    expect(markdown).toContain("# AGENTS.md");
+    expect(markdown).toContain("## Package manager");
+    expect(markdown).toContain("## Testing");
+    expect(markdown).toContain("npx driftcheck diff");
   });
 });
 
@@ -193,7 +321,12 @@ describe("analyzeChanges", () => {
           DC001: { enabled: true, threshold: 0.5 },
           DC002: { enabled: true },
           DC003: { enabled: true },
+          DC004: { enabled: true },
+          DC005: { enabled: true },
+          DC006: { enabled: true },
+          DC007: { enabled: true },
         },
+        inferredRules: [],
       },
     });
 
@@ -222,7 +355,12 @@ describe("analyzeChanges", () => {
           DC001: { enabled: true, threshold: 0.1, severity: "error" },
           DC002: { enabled: true },
           DC003: { enabled: false },
+          DC004: { enabled: true },
+          DC005: { enabled: true },
+          DC006: { enabled: true },
+          DC007: { enabled: true },
         },
+        inferredRules: [],
       },
     });
 
@@ -455,6 +593,136 @@ describe("analyzeChanges", () => {
       ]),
     );
   });
+
+  it("enforces inferred Vitest style against new Jest-style tests", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await initializeAgents({ cwd: root });
+    await writeFile(
+      path.join(root, "tests", "new.test.ts"),
+      [
+        "describe('new behavior', () => {",
+        "  it('works', () => {",
+        "    const fn = jest.fn()",
+        "    expect(fn).not.toHaveBeenCalled()",
+        "  })",
+        "})",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DC006",
+          filePath: "tests/new.test.ts",
+        }),
+      ]),
+    );
+  });
+
+  it("enforces inferred dependency preferences in manifests", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await initializeAgents({ cwd: root });
+    const packageJson = JSON.parse(
+      await readFile(path.join(root, "package.json"), "utf8"),
+    ) as { dependencies: Record<string, string> };
+    packageJson.dependencies["date-fns"] = "^4.1.0";
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "DC004", filePath: "package.json" }),
+      ]),
+    );
+  });
+
+  it("enforces inferred shared utility ownership", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await initializeAgents({ cwd: root });
+    await mkdir(path.join(root, "src", "features"), { recursive: true });
+    await writeFile(
+      path.join(root, "src", "features", "calendar.ts"),
+      [
+        "export function formatCalendarDate(value: Date): string {",
+        "  return value.toISOString().slice(0, 10)",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DC005",
+          filePath: "src/features/calendar.ts",
+        }),
+      ]),
+    );
+  });
+
+  it("enforces inferred architecture and generated-file rules", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await mkdir(path.join(root, "src", "client"), { recursive: true });
+    await mkdir(path.join(root, "src", "server"), { recursive: true });
+    await mkdir(path.join(root, "generated"), { recursive: true });
+    await writeFile(
+      path.join(root, "src", "client", "view.ts"),
+      "export const view = 'client'\n",
+    );
+    await writeFile(
+      path.join(root, "src", "server", "db.ts"),
+      "export const db = 'server'\n",
+    );
+    await writeFile(
+      path.join(root, "generated", "client.generated.ts"),
+      "export const generated = true\n",
+    );
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "add boundaries"]);
+    await initializeAgents({ cwd: root });
+
+    await writeFile(
+      path.join(root, "src", "client", "view.ts"),
+      "import { db } from '../server/db.js'\nexport const view = db\n",
+    );
+    await writeFile(
+      path.join(root, "generated", "client.generated.ts"),
+      "export const generated = false\n",
+    );
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(
+      result.findings.filter((finding) => finding.code === "DC007").length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("warns when a lockfile changes without its dependency manifest", async () => {
+    const root = await makeAgentReadyFixtureRepo();
+    await initializeAgents({ cwd: root });
+    await writeFile(path.join(root, "package-lock.json"), '{"changed":true}\n');
+
+    const result = await analyzeChanges({ cwd: root, mode: "diff" });
+
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "DC007",
+          filePath: "package-lock.json",
+          title: "Lockfile changed without a dependency manifest change",
+        }),
+      ]),
+    );
+  });
 });
 
 describe("reporters", () => {
@@ -488,8 +756,9 @@ describe("reporters", () => {
 });
 
 function finding(
-  code: "DC001" | "DC002" | "DC003",
+  code: "DC001" | "DC002" | "DC003" | "DC004" | "DC005" | "DC006" | "DC007",
   severity: "info" | "warning" | "error",
+  suggestion = "Example suggestion",
 ) {
   return {
     code,
@@ -498,12 +767,14 @@ function finding(
         ? "similar-declaration"
         : code === "DC002"
           ? "new-dependency"
-          : "convention-drift",
+          : code === "DC003"
+            ? "convention-drift"
+            : "inferred-rule-drift",
     severity,
     filePath: "src/example.ts",
     line: 1,
     title: "Example",
     message: "Example message",
-    suggestion: "Example suggestion",
+    suggestion,
   } as const;
 }

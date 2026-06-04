@@ -65,6 +65,12 @@ export async function analyzeChanges(
     ...findSimilarDeclarations(repoMap, changedAnalyses, config),
     ...findNewDependencies(repoMap, changedAnalyses, config),
     ...findConventionDrift(repoMap, changedAnalyses, config),
+    ...(await findInferredRuleDrift(
+      root,
+      changedFiles,
+      changedAnalyses,
+      config,
+    )),
   ];
 
   return { findings: dedupeFindings(sortFindings(findings)) };
@@ -429,4 +435,360 @@ function dedupeFindings(findings: Finding[]): Finding[] {
     seen.add(key);
     return true;
   });
+}
+
+async function findInferredRuleDrift(
+  root: string,
+  changedFiles: ChangedFile[],
+  changedAnalyses: Array<{
+    changedFile: ChangedFile;
+    current: FileAnalysis;
+    previous?: FileAnalysis;
+  }>,
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  for (const rule of config.inferredRules) {
+    if (rule.confidence === "low") continue;
+    if (
+      rule.kind === "test-framework" &&
+      config.rules.DC006.enabled !== false
+    ) {
+      findings.push(
+        ...(await checkTestFrameworkRule(root, changedFiles, rule, config)),
+      );
+    }
+    if (
+      rule.kind === "dependency-preference" &&
+      config.rules.DC004.enabled !== false
+    ) {
+      findings.push(
+        ...(await checkDependencyPreferenceRule(
+          root,
+          changedFiles,
+          changedAnalyses,
+          rule,
+          config,
+        )),
+      );
+    }
+    if (
+      rule.kind === "common-utility" &&
+      config.rules.DC005.enabled !== false
+    ) {
+      findings.push(...checkCommonUtilityRule(changedAnalyses, rule, config));
+    }
+    if (
+      rule.kind === "architecture-boundary" &&
+      config.rules.DC007.enabled !== false
+    ) {
+      findings.push(...checkArchitectureRule(changedAnalyses, rule, config));
+    }
+    if (
+      rule.kind === "generated-files" &&
+      config.rules.DC007.enabled !== false
+    ) {
+      findings.push(...checkGeneratedFilesRule(changedFiles, rule, config));
+    }
+    if (
+      rule.kind === "package-manager" &&
+      config.rules.DC007.enabled !== false
+    ) {
+      findings.push(...checkPackageManagerRule(changedFiles, rule, config));
+    }
+  }
+  return findings;
+}
+
+async function checkTestFrameworkRule(
+  root: string,
+  changedFiles: ChangedFile[],
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Promise<Finding[]> {
+  const framework = String(rule.data?.framework ?? "");
+  const forbidden =
+    framework === "vitest"
+      ? [/\bjest\./, /from\s+["']@?jest/, /require\(["']@?jest/]
+      : framework === "jest"
+        ? [/from\s+["']vitest["']/]
+        : [];
+  if (forbidden.length === 0) return [];
+
+  const findings: Finding[] = [];
+  for (const changedFile of changedFiles.filter((item) =>
+    isTestFile(item.filePath),
+  )) {
+    const current = await readTextFile(root, changedFile.filePath);
+    if (!current || !forbidden.some((pattern) => pattern.test(current)))
+      continue;
+    findings.push(
+      inferredFinding(
+        "DC006",
+        config,
+        changedFile.filePath,
+        Math.min(...changedFile.addedLines),
+        `Test style conflicts with ${rule.title}`,
+        `This changed test uses a different framework style, but driftcheck inferred ${framework} from ${evidenceSummary(rule)}.`,
+        `Rewrite the test using ${framework} conventions while preserving behavior.`,
+      ),
+    );
+  }
+  return findings;
+}
+
+async function checkDependencyPreferenceRule(
+  root: string,
+  changedFiles: ChangedFile[],
+  changedAnalyses: Array<{ current: FileAnalysis }>,
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Promise<Finding[]> {
+  const preferred = String(rule.data?.preferred ?? "");
+  const alternatives = arrayData(rule.data?.alternatives);
+  const findings: Finding[] = [];
+
+  for (const alternative of alternatives) {
+    const imported = changedAnalyses.find(({ current }) =>
+      current.imports.some((item) => packageName(item.source) === alternative),
+    );
+    if (imported) {
+      const importInfo = imported.current.imports.find(
+        (item) => packageName(item.source) === alternative,
+      );
+      findings.push(
+        inferredFinding(
+          "DC004",
+          config,
+          imported.current.filePath,
+          importInfo?.line,
+          `New ${String(rule.data?.category)} dependency conflicts with ${preferred}`,
+          `${alternative} is introduced, but ${preferred} is the established choice. Evidence: ${evidenceSummary(rule)}.`,
+          `Use ${preferred} instead of adding ${alternative}, unless the repository intentionally changes its dependency preference.`,
+        ),
+      );
+    }
+
+    for (const changedFile of changedFiles.filter((item) =>
+      /(?:^|\/)(package\.json|pyproject\.toml|Cargo\.toml|requirements\.txt)$/.test(
+        item.filePath,
+      ),
+    )) {
+      const [current, previous] = await Promise.all([
+        readTextFile(root, changedFile.filePath),
+        readHeadFile(root, changedFile.filePath),
+      ]);
+      if (!current?.includes(alternative) || previous?.includes(alternative))
+        continue;
+      findings.push(
+        inferredFinding(
+          "DC004",
+          config,
+          changedFile.filePath,
+          Math.min(...changedFile.addedLines),
+          `New ${String(rule.data?.category)} dependency conflicts with ${preferred}`,
+          `${alternative} was added to a dependency manifest, but ${preferred} is the established choice. Evidence: ${evidenceSummary(rule)}.`,
+          `Keep ${preferred}, or document why the repository now needs both ${preferred} and ${alternative}.`,
+        ),
+      );
+    }
+  }
+  return findings;
+}
+
+function checkCommonUtilityRule(
+  changedAnalyses: Array<{
+    changedFile: ChangedFile;
+    current: FileAnalysis;
+    previous?: FileAnalysis;
+  }>,
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Finding[] {
+  const ownerPath = String(rule.data?.path ?? "");
+  const keywords = arrayData(rule.data?.keywords);
+  const findings: Finding[] = [];
+
+  for (const { changedFile, current, previous } of changedAnalyses) {
+    if (current.filePath === ownerPath) continue;
+    const previousNames = new Set(
+      previous?.declarations.map((item) => item.name) ?? [],
+    );
+    for (const declaration of current.declarations) {
+      if (
+        !changedFile.addedLines.has(declaration.line) ||
+        previousNames.has(declaration.name)
+      ) {
+        continue;
+      }
+      const haystack = `${declaration.name} ${declaration.text}`.toLowerCase();
+      if (!keywords.some((keyword) => haystack.includes(keyword))) continue;
+      findings.push(
+        inferredFinding(
+          "DC005",
+          config,
+          current.filePath,
+          declaration.line,
+          `Existing utility may already own this concern`,
+          `${ownerPath} appears to own ${String(rule.data?.concern)} utilities. Evidence: ${evidenceSummary(rule)}.`,
+          `Check and reuse ${ownerPath} before adding ${declaration.name} here.`,
+        ),
+      );
+    }
+  }
+  return findings;
+}
+
+function checkArchitectureRule(
+  changedAnalyses: Array<{ current: FileAnalysis }>,
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Finding[] {
+  const from = String(rule.data?.from ?? "");
+  const forbidden = String(rule.data?.forbidden ?? "");
+  const findings: Finding[] = [];
+  for (const { current } of changedAnalyses.filter(({ current }) =>
+    current.filePath.startsWith(`${from}/`),
+  )) {
+    for (const importInfo of current.imports.filter((item) =>
+      resolvesInto(current.filePath, item.source, forbidden),
+    )) {
+      findings.push(
+        inferredFinding(
+          "DC007",
+          config,
+          current.filePath,
+          importInfo.line,
+          `Import crosses inferred architecture boundary`,
+          `${from} should not import ${forbidden}. Evidence: ${evidenceSummary(rule)}.`,
+          `Move shared behavior behind a neutral module or keep this import within ${forbidden}.`,
+        ),
+      );
+    }
+  }
+  return findings;
+}
+
+function checkGeneratedFilesRule(
+  changedFiles: ChangedFile[],
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Finding[] {
+  const patterns = arrayData(rule.data?.patterns);
+  return changedFiles
+    .filter((changedFile) =>
+      patterns.some((pattern) => changedFile.filePath.includes(pattern)),
+    )
+    .map((changedFile) =>
+      inferredFinding(
+        "DC007",
+        config,
+        changedFile.filePath,
+        Math.min(...changedFile.addedLines),
+        "Changed file appears to be generated output",
+        `This path matches generated output already detected in the repository. Evidence: ${evidenceSummary(rule)}.`,
+        "Update the source or generator instead of editing generated output directly.",
+      ),
+    );
+}
+
+function checkPackageManagerRule(
+  changedFiles: ChangedFile[],
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+  config: NonNullable<AnalyzeOptions["config"]>,
+): Finding[] {
+  const manager = String(rule.data?.manager ?? "");
+  const lockfiles: Record<string, string> = {
+    npm: "package-lock.json",
+    pnpm: "pnpm-lock.yaml",
+    yarn: "yarn.lock",
+    bun: "bun.lock",
+  };
+  const expected = lockfiles[manager];
+  if (!expected) return [];
+  const findings = changedFiles
+    .filter(
+      (changedFile) =>
+        Object.values(lockfiles).includes(changedFile.filePath) &&
+        changedFile.filePath !== expected,
+    )
+    .map((changedFile) =>
+      inferredFinding(
+        "DC007",
+        config,
+        changedFile.filePath,
+        Math.min(...changedFile.addedLines),
+        `New lockfile conflicts with inferred package manager ${manager}`,
+        `The repository appears to use ${manager}. Evidence: ${evidenceSummary(rule)}.`,
+        `Remove ${changedFile.filePath} and use ${manager} unless the repository intentionally changes package managers.`,
+      ),
+    );
+  const expectedLockChanged = changedFiles.find(
+    (changedFile) => changedFile.filePath === expected,
+  );
+  const manifestChanged = changedFiles.some((changedFile) =>
+    /(?:^|\/)(package\.json|pyproject\.toml|Cargo\.toml|requirements\.txt)$/.test(
+      changedFile.filePath,
+    ),
+  );
+  if (expectedLockChanged && !manifestChanged) {
+    findings.push(
+      inferredFinding(
+        "DC007",
+        config,
+        expected,
+        Math.min(...expectedLockChanged.addedLines),
+        "Lockfile changed without a dependency manifest change",
+        `${expected} changed, but no dependency manifest changed. Evidence: ${evidenceSummary(rule)}.`,
+        "Revert the lockfile-only change unless it was intentionally regenerated.",
+      ),
+    );
+  }
+  return findings;
+}
+
+function inferredFinding(
+  code: "DC004" | "DC005" | "DC006" | "DC007",
+  config: NonNullable<AnalyzeOptions["config"]>,
+  filePath: string,
+  line: number | undefined,
+  title: string,
+  message: string,
+  suggestion: string,
+): Finding {
+  return {
+    code,
+    kind: "inferred-rule-drift",
+    severity: config.rules[code].severity ?? "warning",
+    filePath,
+    line: Number.isFinite(line) ? line : undefined,
+    title,
+    message,
+    suggestion,
+    docsUrl: ruleDocs[code],
+  };
+}
+
+function evidenceSummary(
+  rule: NonNullable<AnalyzeOptions["config"]>["inferredRules"][number],
+): string {
+  return rule.evidence.map((item) => item.path).join(", ");
+}
+
+function arrayData(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
+function resolvesInto(
+  importer: string,
+  source: string,
+  forbidden: string,
+): boolean {
+  if (!source.startsWith(".")) return source.startsWith(forbidden);
+  const resolved = path.posix.normalize(
+    path.posix.join(path.posix.dirname(importer.replaceAll("\\", "/")), source),
+  );
+  return resolved.startsWith(forbidden);
 }

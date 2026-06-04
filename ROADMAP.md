@@ -15,6 +15,13 @@ MVP2 adds configuration, rule codes, finding filters, GitHub annotation output, 
 - Dependency-rule fixes for modified tracked files and package-name edge cases.
 - Packaging prep with `prepack`, `npm pack --dry-run` verification, and trusted-publishing workflow scaffold.
 
+## Agent-Ready MVP
+
+- `scan --rules` infers evidence-backed repo conventions.
+- `agents init` safely generates agent-readable rules and machine config.
+- Inferred test framework, dependency preference, utility ownership, generated file, package manager, and conservative boundary rules are enforced by diff checks.
+- `brief` creates a compact repair prompt for an AI coding agent.
+
 ## Next Frontier
 
 ## 1. Real Parser Upgrade

@@ -1,11 +1,18 @@
 #!/usr/bin/env node
+import {
+  initializeAgents,
+  renderAgentsInitResult,
+  renderRules,
+} from "./agents.js";
+import { formatBrief } from "./brief.js";
 import { analyzeChanges } from "./driftcheck.js";
 import { loadConfig } from "./config.js";
+import { inferRepoRules } from "./inferred-rules.js";
 import { filterFindings, formatOutput, shouldFail } from "./reporters.js";
 import { scanRepo } from "./scan.js";
 import type { OutputFormat, Severity } from "./types.js";
 
-type Command = "diff" | "staged" | "scan";
+type Command = "diff" | "staged" | "scan" | "agents-init" | "brief";
 
 interface ParsedArgs {
   command?: Command;
@@ -16,6 +23,8 @@ interface ParsedArgs {
   minSeverity?: Severity;
   quiet: boolean;
   failOn: Severity;
+  rules: boolean;
+  cursor: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -26,6 +35,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     noConfig: false,
     quiet: false,
     failOn: "error",
+    rules: false,
+    cursor: false,
   };
 
   while (args.length > 0) {
@@ -72,7 +83,30 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
-    if (arg === "diff" || arg === "staged" || arg === "scan") {
+    if (arg === "--rules") {
+      parsed.rules = true;
+      continue;
+    }
+
+    if (arg === "--cursor") {
+      parsed.cursor = true;
+      continue;
+    }
+
+    if (arg === "agents") {
+      if (args.shift() !== "init") {
+        throw new Error("agents requires the init subcommand");
+      }
+      parsed.command = "agents-init";
+      continue;
+    }
+
+    if (
+      arg === "diff" ||
+      arg === "staged" ||
+      arg === "scan" ||
+      arg === "brief"
+    ) {
       parsed.command = arg;
       continue;
     }
@@ -95,12 +129,16 @@ function help(): string {
     "Usage:",
     "  driftcheck diff [--format text|json|github] [--cwd <path>]",
     "  driftcheck staged [--format text|json|github] [--cwd <path>]",
-    "  driftcheck scan [--format text|json] [--cwd <path>]",
+    "  driftcheck scan [--rules] [--format text|json] [--cwd <path>]",
+    "  driftcheck agents init [--cursor] [--cwd <path>]",
+    "  driftcheck brief [--cwd <path>]",
     "",
     "Commands:",
     "  diff     Analyze unstaged working tree changes",
     "  staged   Analyze staged changes",
     "  scan     Build a lightweight map of repo patterns",
+    "  agents init  Generate agent-readable repo convention files",
+    "  brief    Print a compact repair prompt for the current diff",
     "",
     "Options:",
     "  --json                  Alias for --format json",
@@ -126,7 +164,25 @@ async function main(argv: string[]): Promise<number> {
     noConfig: args.noConfig,
   });
 
+  if (args.command === "agents-init") {
+    const result = await initializeAgents({
+      cwd: args.cwd,
+      cursor: args.cursor,
+    });
+    console.log(renderAgentsInitResult(result));
+    return 0;
+  }
+
   if (args.command === "scan") {
+    if (args.rules) {
+      const rules = await inferRepoRules(args.cwd, config);
+      console.log(
+        args.format === "json"
+          ? JSON.stringify({ rules }, null, 2)
+          : renderRules(rules),
+      );
+      return 0;
+    }
     const repoMap = await scanRepo(args.cwd, config);
     console.log(
       formatOutput(
@@ -139,7 +195,7 @@ async function main(argv: string[]): Promise<number> {
 
   const result = await analyzeChanges({
     cwd: args.cwd,
-    mode: args.command,
+    mode: args.command === "brief" ? "diff" : args.command,
     config,
   });
   const filteredFindings = filterFindings(result.findings, {
@@ -147,6 +203,11 @@ async function main(argv: string[]): Promise<number> {
     quiet: args.quiet,
   });
   const filteredResult = { findings: filteredFindings };
+
+  if (args.command === "brief") {
+    console.log(formatBrief(filteredFindings));
+    return 0;
+  }
 
   console.log(formatOutput(filteredResult, args.format));
   return shouldFail(filteredFindings, args.failOn) ? 1 : 0;

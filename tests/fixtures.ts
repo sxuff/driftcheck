@@ -145,6 +145,68 @@ export async function makeRustFixtureRepo(): Promise<string> {
   return root;
 }
 
+export async function makeAgentReadyFixtureRepo(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "driftcheck-agents-fixture-"));
+  await mkdir(path.join(root, "src", "utils"), { recursive: true });
+  await mkdir(path.join(root, "tests"), { recursive: true });
+
+  await writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify(
+      {
+        name: "agent-ready-fixture",
+        type: "module",
+        scripts: {
+          test: "vitest run",
+          typecheck: "tsc --noEmit",
+        },
+        dependencies: {
+          dayjs: "^1.11.13",
+        },
+        devDependencies: {
+          vitest: "^4.1.7",
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(path.join(root, "package-lock.json"), "{}\n");
+  await writeFile(
+    path.join(root, "src", "utils", "date.ts"),
+    [
+      "import dayjs from 'dayjs'",
+      "",
+      "export function formatDate(value: Date): string {",
+      "  return dayjs(value).format('YYYY-MM-DD')",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    path.join(root, "tests", "date.test.ts"),
+    [
+      "import { describe, expect, it } from 'vitest'",
+      "import { formatDate } from '../src/utils/date.js'",
+      "",
+      "describe('formatDate', () => {",
+      "  it('formats dates', () => {",
+      "    expect(formatDate(new Date(0))).toBe('1970-01-01')",
+      "  })",
+      "})",
+      "",
+    ].join("\n"),
+  );
+
+  await git(root, ["init"]);
+  await git(root, ["config", "user.email", "test@example.com"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "initial"]);
+
+  return root;
+}
+
 export async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout.trimEnd();
